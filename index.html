@@ -225,12 +225,12 @@
     const ENEMIES = {
       soldier: {
         name:'Soldier', hp:30, speed:60, radius:8,
-        melee:true, meleeRange:24, meleeDamage:15, meleeCooldown:0.8,
+        melee:true, meleeRange:24, meleeDamage:10, meleeCooldown:0.8,
         color:'#71717a', accent:'#27272a', bounty:5,
       },
       rusher: {
         name:'Rusher', hp:25, speed:115, radius:8,
-        melee:true, meleeRange:24, meleeDamage:18, meleeCooldown:0.7,
+        melee:true, meleeRange:24, meleeDamage:14, meleeCooldown:0.7,
         color:'#7c2d12', accent:'#451a03', bounty:8,
       },
       rpg: {
@@ -1152,7 +1152,7 @@
       let x, y, tries = 0;
       do {
         x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++;
-      } while (Math.hypot(x - p.x, y - p.y) < 700 && tries < 40);
+      } while (Math.hypot(x - p.x, y - p.y) < 900 && tries < 40);
       state.units.push(makeEnemy(kind, x, y));
     }
 
@@ -1710,6 +1710,52 @@
       }
       ctx.globalAlpha = 1;
       ctx.restore();
+
+      // Off-screen threat indicators — red arrows on screen edge for hostile units outside the camera
+      renderThreatIndicators();
+    }
+
+    function renderThreatIndicators() {
+      const p = getPlayer();
+      if (!p) return;
+      const cx = state.camera.x, cy = state.camera.y;
+      const margin = 28;
+      const cx2 = VIEW_W / 2, cy2 = VIEW_H / 2;
+      const radius = Math.min(cx2, cy2) - margin;
+      for (const u of state.units) {
+        if (!u.alive || u.isPlayer) continue;
+        if (u.team === p.team) continue;          // skip friendlies (TDM/CTF allies)
+        // is it on-screen?
+        if (u.x >= cx - 20 && u.x <= cx + VIEW_W + 20 && u.y >= cy - 20 && u.y <= cy + VIEW_H + 20) continue;
+        // direction from player to enemy in world space
+        const dx = u.x - p.x, dy = u.y - p.y;
+        const ang = Math.atan2(dy, dx);
+        const ix = cx2 + Math.cos(ang) * radius;
+        const iy = cy2 + Math.sin(ang) * radius;
+        // color by enemy type
+        let color = '#ef4444';
+        if (u.category === 'enemy') {
+          if (u.enemyKind === 'super') color = '#a78bfa';
+          else if (u.enemyKind === 'mega') color = '#f472b6';
+          else if (u.enemyKind === 'humvee') color = '#fb923c';
+          else if (u.enemyKind === 'rpg') color = '#dc2626';
+        } else color = '#06b6d4';
+        ctx.save();
+        ctx.translate(ix, iy);
+        ctx.rotate(ang);
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(8, 0);
+        ctx.lineTo(-4, -6);
+        ctx.lineTo(-1, 0);
+        ctx.lineTo(-4, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     const els = {
