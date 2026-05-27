@@ -175,7 +175,7 @@
     // Flat per-shot damage for everything else (Onslaught enemies)
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
-      rpg: 50, heavy_cannon: 30, mega_volley: 25, humvee_mg: 6,
+      rpg: 40, heavy_cannon: 30, mega_volley: 25, humvee_mg: 6,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -589,7 +589,7 @@
     }
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
-                       rpg:160, heavy_cannon:260, mega_volley:240, humvee_mg:520 };
+                       rpg:110, heavy_cannon:260, mega_volley:240, humvee_mg:520 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -961,13 +961,16 @@
           }
         }
         b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
-        // trails for rockets and RPGs
+        // trails for rockets and RPGs — RPG gets a louder trail so you can track it
         if (b.weapon === 'rocket' || b.weapon === 'rpg') {
           b.trailTimer = (b.trailTimer || 0) - dt;
           if (b.trailTimer <= 0) {
-            b.trailTimer = 0.03;
-            state.particles.push({ x: b.x, y: b.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.4, maxLife: 0.4, color: 'rgba(180, 180, 180, 0.85)', radius: rand(2, 4) });
-            state.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.25, maxLife: 0.25, color: '#fbbf24', radius: rand(1, 2) });
+            b.trailTimer = b.weapon === 'rpg' ? 0.02 : 0.03;
+            const smokeCount = b.weapon === 'rpg' ? 2 : 1;
+            for (let k = 0; k < smokeCount; k++) {
+              state.particles.push({ x: b.x, y: b.y, vx: rand(-25, 25), vy: rand(-25, 25), life: 0.55, maxLife: 0.55, color: 'rgba(200, 200, 200, 0.9)', radius: rand(2.5, 4.5) });
+            }
+            state.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, maxLife: 0.3, color: b.weapon === 'rpg' ? '#ef4444' : '#fbbf24', radius: rand(1.5, 2.5) });
           }
         }
       }
@@ -998,10 +1001,16 @@
             const damage = damageFor(b.weapon, u, b.owner);
             u.hp -= damage;
             u.hitFlash = 0.12;
-            if (b.weapon === 'rocket' || b.weapon === 'rpg') {
+            if (b.weapon === 'rocket') {
+              // only player IFV rocket stuns
               u.stun = Math.max(u.stun, 1.5);
               spawnParticles(b.x, b.y, '#fbbf24', 24, 360);
               state.shake = Math.min(state.shake + 7, 12);
+            } else if (b.weapon === 'rpg') {
+              // RPG: damage and big explosion, no stun
+              spawnParticles(b.x, b.y, '#ef4444', 20, 340);
+              spawnParticles(b.x, b.y, '#fbbf24', 14, 200);
+              state.shake = Math.min(state.shake + 6, 11);
             } else {
               spawnParticles(b.x, b.y, b.weapon==='cannon' || b.weapon==='heavy_cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.weapon==='cannon'?14:5);
             }
@@ -1618,11 +1627,37 @@
           ctx.save();
           const ang = Math.atan2(b.vy, b.vx);
           ctx.translate(b.x, b.y); ctx.rotate(ang);
-          ctx.fillStyle = b.weapon === 'rpg' ? '#7c2d12' : '#f97316';
-          ctx.fillRect(-5, -2, 10, 4);
-          ctx.fillStyle = '#fbbf24';
-          ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(8, 0); ctx.lineTo(5, 2); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = '#dc2626'; ctx.fillRect(-6, -2, 1, 4);
+          if (b.weapon === 'rpg') {
+            // bigger, more obvious RPG warhead
+            // body: bright red
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(-7, -3, 12, 6);
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(-7, -3, 12, 6);
+            // warhead nose cone (yellow/orange)
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.moveTo(5, -3); ctx.lineTo(11, 0); ctx.lineTo(5, 3); ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#000'; ctx.stroke();
+            // dark stripe down the middle
+            ctx.fillStyle = '#7f1d1d';
+            ctx.fillRect(-7, -0.5, 12, 1);
+            // tail fins (X pattern)
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(-8, -4, 3, 2); ctx.fillRect(-8, 2, 3, 2);
+            // flame
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.moveTo(-8, -2); ctx.lineTo(-13, 0); ctx.lineTo(-8, 2); ctx.closePath();
+            ctx.fill();
+          } else {
+            // IFV rocket (player) — original look
+            ctx.fillStyle = '#f97316';
+            ctx.fillRect(-5, -2, 10, 4);
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(8, 0); ctx.lineTo(5, 2); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#dc2626'; ctx.fillRect(-6, -2, 1, 4);
+          }
           ctx.restore();
         } else if (b.weapon === 'autocannon') {
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
