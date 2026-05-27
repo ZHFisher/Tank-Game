@@ -666,8 +666,13 @@
     canvas.addEventListener('contextmenu', e => e.preventDefault());
 
     function togglePause() {
-      if (state.scene === 'playing') { state.scene = 'paused'; document.getElementById('pause-menu').classList.remove('hidden'); }
-      else if (state.scene === 'paused') { state.scene = 'playing'; document.getElementById('pause-menu').classList.add('hidden'); }
+      if (state.scene === 'playing') {
+        state.scene = 'paused'; document.getElementById('pause-menu').classList.remove('hidden');
+        pauseMapMusic(true);
+      } else if (state.scene === 'paused') {
+        state.scene = 'playing'; document.getElementById('pause-menu').classList.add('hidden');
+        pauseMapMusic(false);
+      }
     }
 
     function resolveWallCollision(entity) {
@@ -819,6 +824,7 @@
       laser:      'laser.mp3',
       heavy_mg:   'heavy_mg.mp3',
       mg:         'mg.mp3',
+      allahu:     'allahu.mp3',
     };
     // per-file playback options
     // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
@@ -831,7 +837,39 @@
       ifv_rocket: { volume: 0.65 },
       heavy_mg:   { volume: 0.55, duration: 0.12, variance: 0.1 },
       mg:         { volume: 0.4,  duration: 0.06, variance: 0.18 },
+      allahu:     { volume: 0.7,  variance: 0.08 },
     };
+
+    // ============================================================
+    // Map background music
+    // ============================================================
+    const MAP_MUSIC = {
+      desert: ['music/desert1.mp3', 'music/desert2.mp3', 'music/desert3.mp3'],
+      // other maps: add tracks here when files are available
+    };
+    let currentMusic = null;
+    function startMapMusic(mapKey) {
+      stopMapMusic();
+      const list = MAP_MUSIC[mapKey];
+      if (!list || list.length === 0) return;
+      const choice = list[Math.floor(Math.random() * list.length)];
+      currentMusic = new Audio(choice);
+      currentMusic.loop = true;
+      currentMusic.volume = 0.5;
+      currentMusic.play().catch(()=>{});
+    }
+    function stopMapMusic() {
+      if (currentMusic) {
+        currentMusic.pause();
+        currentMusic.currentTime = 0;
+        currentMusic = null;
+      }
+    }
+    function pauseMapMusic(paused) {
+      if (!currentMusic) return;
+      if (paused) currentMusic.pause();
+      else currentMusic.play().catch(()=>{});
+    }
     const soundBuffers = {};
     const lastPlayed = {};
     const THROTTLE = {}; // no throttling — single-shot slices sync naturally to fire rate
@@ -1298,6 +1336,10 @@
       spawnParticles(enemy.x, enemy.y, enemy.enemyKind === 'mega' ? '#f472b6' : (enemy.enemyKind === 'super' ? '#a78bfa' : '#fb923c'), enemy.enemyKind === 'mega' ? 40 : 22, 320);
       state.shake = Math.min(state.shake + (enemy.enemyKind === 'mega' ? 9 : 4), 12);
       if (killer && killer.isPlayer) state.score += def.bounty;
+      // Death sound for foot soldiers
+      if (enemy.enemyKind === 'soldier' || enemy.enemyKind === 'rusher') {
+        playClip('allahu');
+      }
     }
 
     function updateFlags(dt) {
@@ -2136,10 +2178,12 @@
       state.camera.x = player.x - VIEW_W/2;
       state.camera.y = player.y - VIEW_H/2;
       state.scene = 'playing';
+      startMapMusic(state.selectedMap);
     }
 
     function endMatch(victory, headline) {
       state.scene = 'gameover';
+      stopMapMusic();
       if (state.score > state.highScore) {
         state.highScore = state.score;
         localStorage.setItem('tankbuster-high', String(state.score));
@@ -2221,6 +2265,7 @@
     document.getElementById('resume-button').addEventListener('click', () => { if (state.scene === 'paused') togglePause(); });
     document.getElementById('quit-button').addEventListener('click', () => {
       state.scene = 'menu';
+      stopMapMusic();
       document.getElementById('pause-menu').classList.add('hidden');
       document.getElementById('menu').classList.remove('hidden');
     });
