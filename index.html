@@ -118,8 +118,8 @@
     </div>
 
     <div class="overlay hidden" id="upgrade-pick">
-      <h2 style="color:#facc15;text-shadow:0 2px 14px rgba(250, 204, 21, 0.5)">Wave <span id="upg-wave">1</span> Cleared</h2>
-      <p class="lead">Pick one upgrade</p>
+      <h2 style="color:#facc15;text-shadow:0 2px 14px rgba(250, 204, 21, 0.5);letter-spacing:4px;">⭐ CONGRATS PATRIOT YOU WELFARED UP ⭐</h2>
+      <p class="lead">Wave <span id="upg-wave">1</span> Cleared · Pick one upgrade</p>
       <div class="upgrades-grid" id="upgrade-options"></div>
     </div>
 
@@ -657,6 +657,14 @@
       if (k === ' ') e.preventDefault();
     });
     window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    // Clear all input state if the window loses focus (alt-tab) or visibility (tab switch).
+    // Without this, a held key whose keyup happens off-window stays stuck and the tank drifts.
+    function clearAllInput() {
+      for (const k of Object.keys(keys)) keys[k] = false;
+      mouse.left = false; mouse.right = false;
+    }
+    window.addEventListener('blur', clearAllInput);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) clearAllInput(); });
     canvas.addEventListener('mousemove', e => {
       const rect = canvas.getBoundingClientRect();
       mouse.x = (e.clientX - rect.left) * (VIEW_W / rect.width);
@@ -670,9 +678,11 @@
       if (state.scene === 'playing') {
         state.scene = 'paused'; document.getElementById('pause-menu').classList.remove('hidden');
         pauseMapMusic(true);
+        clearAllInput();
       } else if (state.scene === 'paused') {
         state.scene = 'playing'; document.getElementById('pause-menu').classList.add('hidden');
         pauseMapMusic(false);
+        clearAllInput();
       }
     }
 
@@ -846,7 +856,7 @@
       death_npc1:   { volume: 0.75, variance: 0.12 },
       death_npc2:   { volume: 0.75, variance: 0.12 },
       death_female: { volume: 0.75, variance: 0.12 },
-      level_up:     { volume: 0.2 },
+      level_up:     { volume: 0.3 },
     };
     // Random pool of soldier death cries
     const DEATH_POOL = ['allahu', 'death_npc1', 'death_npc2', 'death_female'];
@@ -1491,6 +1501,7 @@
       playClip('level_up');
       document.getElementById('upgrade-pick').classList.add('hidden');
       state.scene = 'playing';
+      clearAllInput();    // prevent held key from sticking after the click
       startNextWave();
     }
 
