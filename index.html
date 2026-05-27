@@ -176,6 +176,7 @@
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
       rpg: 40, heavy_cannon: 30, mega_volley: 25, humvee_mg: 6,
+      pistol: 8, smg: 5,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -224,13 +225,15 @@
     // Onslaught enemies (non-tank). Each is its own creature with different rendering.
     const ENEMIES = {
       soldier: {
+        // ranged now — fires a visible pistol shot, no melee damage
         name:'Soldier', hp:30, speed:60, radius:8,
-        melee:true, meleeRange:24, meleeDamage:10, meleeCooldown:0.8,
+        weapon:'pistol', weaponReload:1.5, range:340,
         color:'#71717a', accent:'#27272a', bounty:5,
       },
       rusher: {
-        name:'Rusher', hp:25, speed:115, radius:8,
-        melee:true, meleeRange:24, meleeDamage:14, meleeCooldown:0.7,
+        // closes fast and fires a 3-shot SMG burst
+        name:'Rusher', hp:25, speed:95, radius:8,
+        weapon:'smg', weaponReload:0.15, weaponBurst:3, burstGap:1.6, range:280,
         color:'#7c2d12', accent:'#451a03', bounty:8,
       },
       rpg: {
@@ -592,7 +595,8 @@
     }
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
-                       rpg:110, heavy_cannon:220, mega_volley:200, humvee_mg:340 };
+                       rpg:110, heavy_cannon:220, mega_volley:200, humvee_mg:340,
+                       pistol:300, smg:380 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -602,12 +606,16 @@
               weapon==='autocannon' ? 2.2 :
               weapon==='rocket' ? 4 :
               weapon==='rpg' ? 5 :  // RPG persists until owner dies
-              weapon==='mega_volley' ? 4 : 2,
+              weapon==='mega_volley' ? 4 :
+              weapon==='pistol' ? 1.4 :
+              weapon==='smg' ? 1.2 : 2,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
                 weapon==='autocannon' ? 3 :
                 weapon==='rocket'||weapon==='rpg' ? 5 :
-                weapon==='mega_volley' ? 5 : 3,
+                weapon==='mega_volley' ? 5 :
+                weapon==='pistol' ? 3 :
+                weapon==='smg' ? 2.5 : 3,
         homingTarget: null,
         piercesLeft: 0,
         trailTimer: 0,
@@ -715,6 +723,8 @@
         spawnParticles(mx, my, '#fbbf24', 3, 120);
       } else if (weapon === 'mg' || weapon === 'humvee_mg') {
         spawnParticles(mx, my, '#fbbf24', 1, 80);
+      } else if (weapon === 'pistol' || weapon === 'smg') {
+        spawnParticles(mx, my, '#fbbf24', 2, 100);
       } else if (weapon === 'rpg') {
         spawnParticles(mx, my, '#94a3b8', 8, 200);
       } else if (weapon === 'heavy_cannon') {
@@ -843,69 +853,45 @@
       const d = Math.hypot(dx, dy) || 1;
       const ang = Math.atan2(dy, dx);
 
-      // Movement: melee close in, ranged maintain optimal distance
-      if (def.melee) {
+      // All Onslaught enemies are now ranged. Each keeps a preferred distance and fires a visible projectile.
+      const OPTIMAL = { soldier:240, rusher:170, rpg:360, humvee:260, super:340, mega:380 };
+      const optimal = OPTIMAL[enemy.enemyKind] || 320;
+      if (d > optimal + 60) {
         enemy.x += Math.cos(ang) * enemy.speed * dt;
         enemy.y += Math.sin(ang) * enemy.speed * dt;
-        enemy.angle = ang; enemy.turretAngle = ang;
-        resolveWallCollision(enemy);
+        enemy.angle = ang;
+      } else if (d < optimal - 60) {
+        enemy.x -= Math.cos(ang) * enemy.speed * dt * 0.7;
+        enemy.y -= Math.sin(ang) * enemy.speed * dt * 0.7;
+        enemy.angle = ang;
+      } else {
+        enemy.x += Math.cos(ang + Math.PI/2) * enemy.speed * dt * 0.4;
+        enemy.y += Math.sin(ang + Math.PI/2) * enemy.speed * dt * 0.4;
+        enemy.angle = ang;
+      }
+      resolveWallCollision(enemy);
+      enemy.turretAngle = ang;
 
-        // Push enemy out of the player's footprint so they can't visually overlap
-        // (this is why "sparks just appear on me" — enemies were standing on top of the tank)
+      // Also push enemy out of player's footprint just in case they tank-bump
+      {
         const contactD = enemy.radius + p.radius;
-        let dxNow = p.x - enemy.x, dyNow = p.y - enemy.y;
-        let dNow = Math.hypot(dxNow, dyNow) || 1;
+        const dxNow = p.x - enemy.x, dyNow = p.y - enemy.y;
+        const dNow = Math.hypot(dxNow, dyNow) || 1;
         if (dNow < contactD) {
           enemy.x = p.x - (dxNow / dNow) * contactD;
           enemy.y = p.y - (dyNow / dNow) * contactD;
-          dxNow = p.x - enemy.x; dyNow = p.y - enemy.y;
-          dNow = Math.hypot(dxNow, dyNow) || 1;
         }
+      }
 
-        // melee hit when actually touching (within 3px of contact line)
-        if (dNow < contactD + 3 && enemy.meleeCooldown <= 0 && p.invuln <= 0) {
-          p.hp -= def.meleeDamage;
-          p.hitFlash = 0.12;
-          // bigger / brighter damage feedback so the player knows what hit them
-          spawnParticles(p.x, p.y, '#ef4444', 12, 220);
-          spawnParticles(enemy.x, enemy.y, '#fbbf24', 8, 180);
-          state.shake = Math.min(state.shake + 3, 8);
-          enemy.meleeCooldown = def.meleeCooldown;
-          // thorns
-          if (p.upgrades && p.upgrades.thorns) {
-            enemy.hp -= p.upgrades.thorns;
-            enemy.hitFlash = 0.12;
-            spawnParticles(enemy.x, enemy.y, '#facc15', 8, 140);
-            if (enemy.hp <= 0) onEnemyKilled(enemy, p);
-          }
-          if (p.hp <= 0) endMatch(false, 'Knocked Out');
-        }
-      } else {
-        // ranged: keep a preferred distance
-        const optimal = enemy.enemyKind === 'humvee' ? 260 : 360;
-        if (d > optimal + 80) {
-          enemy.x += Math.cos(ang) * enemy.speed * dt;
-          enemy.y += Math.sin(ang) * enemy.speed * dt;
-          enemy.angle = ang;
-        } else if (d < optimal - 80) {
-          enemy.x -= Math.cos(ang) * enemy.speed * dt * 0.6;
-          enemy.y -= Math.sin(ang) * enemy.speed * dt * 0.6;
-          enemy.angle = ang;
-        } else {
-          // strafe slowly
-          enemy.x += Math.cos(ang + Math.PI/2) * enemy.speed * dt * 0.3;
-          enemy.y += Math.sin(ang + Math.PI/2) * enemy.speed * dt * 0.3;
-          enemy.angle = ang;
-        }
-        resolveWallCollision(enemy);
-        enemy.turretAngle = ang;
-
-        // Burst-fire for humvee
-        if (def.weapon === 'humvee_mg') {
+      {
+        // Burst-fire for humvee, smg-rusher
+        if (def.weapon === 'humvee_mg' || def.weapon === 'smg') {
           if (enemy.burstLeft > 0) {
             enemy.burstTimer -= dt;
             if (enemy.burstTimer <= 0 && d < def.range) {
-              fireWeapon(enemy, 'humvee_mg', ang);
+              // small spread for both humvee MG and rusher SMG
+              const spread = (Math.random() - 0.5) * 0.07;
+              fireWeapon(enemy, def.weapon, ang + spread);
               enemy.burstLeft--;
               enemy.burstTimer = def.weaponReload;
             }
@@ -1607,13 +1593,9 @@
     function render() {
       const m = state.map;
       ctx.save();
-      let shx = 0, shy = 0;
-      if (state.shake > 0.05) {
-        shx = rand(-state.shake, state.shake);
-        shy = rand(-state.shake, state.shake);
-        state.shake *= 0.88;
-      }
-      ctx.translate(-Math.floor(state.camera.x) + shx, -Math.floor(state.camera.y) + shy);
+      // Screen shake disabled
+      state.shake = 0;
+      ctx.translate(-Math.floor(state.camera.x), -Math.floor(state.camera.y));
       const cx = state.camera.x, cy = state.camera.y;
       ctx.fillStyle = m.ground; ctx.fillRect(cx, cy, VIEW_W, VIEW_H);
       ctx.strokeStyle = m.gridColor; ctx.lineWidth = 1;
@@ -1680,16 +1662,18 @@
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else if (b.weapon === 'humvee_mg') {
+        } else if (b.weapon === 'humvee_mg' || b.weapon === 'pistol' || b.weapon === 'smg') {
           // visible chunky tracer + bright outline so they read against any biome
           const v = Math.atan2(b.vy, b.vx);
+          const tracerLen = b.weapon === 'pistol' ? 9 : 12;
+          const ballR = b.weapon === 'pistol' ? 3 : (b.weapon === 'smg' ? 2.8 : 3.5);
           ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.moveTo(b.x - Math.cos(v)*12, b.y - Math.sin(v)*12);
+          ctx.moveTo(b.x - Math.cos(v)*tracerLen, b.y - Math.sin(v)*tracerLen);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
           ctx.fillStyle = '#fbbf24';
-          ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(b.x, b.y, ballR, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
         } else { // player mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
