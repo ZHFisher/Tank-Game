@@ -230,8 +230,9 @@
         color:'#94a3b8', accent:'#1e293b', bounty:5,
       },
       rusher: {
+        // Single-shot now; fires faster than soldier but one bullet at a time
         name:'Rusher', hp:25, speed:85, radius:9,
-        weapon:'smg', weaponReload:0.2, weaponBurst:3, burstGap:2.6, range:280,
+        weapon:'smg', weaponReload:1.3, range:280,
         color:'#dc2626', accent:'#450a0a', bounty:8,
       },
       rpg: {
@@ -591,7 +592,7 @@
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
                        rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
-                       pistol:200, smg:260 };
+                       pistol:130, smg:140 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -679,10 +680,17 @@
       return false;
     }
 
-    // Ability sound effect — preloaded so first play has no delay
-    const meow = new Audio('meow.mp3');
-    meow.volume = 0.6;
-    meow.preload = 'auto';
+    // Per-class meow pitch — same source file, different playback rates so each tank has its own voice.
+    // Each class gets its own Audio instance so they can overlap.
+    const MEOW_RATE = { light: 1.45, medium: 1.0, mbt: 0.7, ifv: 1.18 };
+    const meows = {};
+    for (const k of Object.keys(MEOW_RATE)) {
+      const a = new Audio('meow.mp3');
+      a.volume = 0.65;
+      a.preload = 'auto';
+      a.playbackRate = MEOW_RATE[k];
+      meows[k] = a;
+    }
 
     function tryUseAbility(u) {
       if (!u || !u.alive || u.abilityCooldown > 0 || u.stun > 0) return;
@@ -694,11 +702,14 @@
       let cd = def.abilityCooldown;
       if (u.upgrades && u.upgrades.abilityMult) cd *= u.upgrades.abilityMult;
       u.abilityCooldown = cd;
-      // play meow
-      try {
-        meow.currentTime = 0;
-        meow.play().catch(()=>{});
-      } catch (e) {}
+      // play meow at this class's pitch
+      const m = meows[u.tankKey];
+      if (m) {
+        try {
+          m.currentTime = 0;
+          m.play().catch(()=>{});
+        } catch (e) {}
+      }
     }
 
     function nearestEnemyToUnit(u) {
@@ -889,21 +900,20 @@
       }
 
       {
-        // Burst-fire for humvee, smg-rusher
-        if (def.weapon === 'humvee_mg' || def.weapon === 'smg') {
+        // Burst-fire for humvee only now (rusher went single-shot)
+        if (def.weapon === 'humvee_mg') {
           if (enemy.burstLeft > 0) {
             enemy.burstTimer -= dt;
             if (enemy.burstTimer <= 0 && d < def.range) {
-              // small spread for both humvee MG and rusher SMG
               const spread = (Math.random() - 0.5) * 0.07;
               fireWeapon(enemy, def.weapon, ang + spread);
               enemy.burstLeft--;
               enemy.burstTimer = def.weaponReload;
             }
           } else if (enemy.primaryCooldown <= 0 && d < def.range) {
-            enemy.burstLeft = def.weaponBurst;
+            enemy.burstLeft = def.weaponBurst || 1;
             enemy.burstTimer = 0;
-            enemy.primaryCooldown = def.burstGap + rand(0, 0.5);
+            enemy.primaryCooldown = (def.burstGap || def.weaponReload) + rand(0, 0.5);
           }
         } else if (def.weapon === 'mega_volley') {
           if (enemy.primaryCooldown <= 0 && d < def.range) {
@@ -946,10 +956,11 @@
     function updateBullets(dt) {
       const m = state.map;
       for (const b of state.bullets) {
-        // RPG missiles fizzle if their owner dies
-        if (b.weapon === 'rpg' && (!b.owner || !b.owner.alive)) {
+        // ANY enemy bullet fizzles if its shooter is dead.
+        // Player bullets keep flying (so you can finish a shot mid-air).
+        if (b.owner && !b.owner.alive && !b.owner.isPlayer) {
           b.life = 0;
-          spawnParticles(b.x, b.y, '#94a3b8', 10, 160);
+          spawnParticles(b.x, b.y, '#94a3b8', 6, 140);
           continue;
         }
         // rocket homing
