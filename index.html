@@ -239,18 +239,21 @@
         color:'#854d0e', accent:'#451a03', bounty:15,
       },
       humvee: {
+        // Slower burst, fewer shots, all fired well inside the camera view
         name:'Humvee', hp:120, speed:130, radius:14,
-        weapon:'humvee_mg', weaponReload:0.12, weaponBurst:8, burstGap:1.4, range:380, projSpeed:520,
+        weapon:'humvee_mg', weaponReload:0.14, weaponBurst:5, burstGap:2.2, range:340,
         color:'#3f3f3f', accent:'#0a0a0a', bounty:20,
       },
       super: {
+        // Range pulled inside camera view so you see the shooter
         name:'Super Tank', hp:350, speed:55, radius:18,
-        weapon:'heavy_cannon', weaponReload:1.7, range:560, projSpeed:260,
+        weapon:'heavy_cannon', weaponReload:1.9, range:460,
         color:'#7e22ce', accent:'#3b0764', bounty:40,
       },
       mega: {
+        // Same — boss has to be on screen to threaten you
         name:'Mega Tank', hp:900, speed:38, radius:24,
-        weapon:'mega_volley', weaponReload:2.5, range:600, projSpeed:240,
+        weapon:'mega_volley', weaponReload:2.8, range:500,
         color:'#831843', accent:'#500724', bounty:100,
       },
     };
@@ -589,7 +592,7 @@
     }
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
-                       rpg:110, heavy_cannon:260, mega_volley:240, humvee_mg:520 };
+                       rpg:110, heavy_cannon:220, mega_volley:200, humvee_mg:340 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -1663,7 +1666,18 @@
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else { // mg, humvee_mg
+        } else if (b.weapon === 'humvee_mg') {
+          // visible chunky tracer + bright outline so they read against any biome
+          const v = Math.atan2(b.vy, b.vx);
+          ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(b.x - Math.cos(v)*12, b.y - Math.sin(v)*12);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+        } else { // player mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
           ctx.beginPath(); ctx.moveTo(b.x - Math.cos(v)*10, b.y - Math.sin(v)*10); ctx.lineTo(b.x, b.y); ctx.stroke();
