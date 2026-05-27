@@ -510,7 +510,7 @@
     // Wave compositions for Onslaught
     function generateWave(n) {
       const tables = {
-        soldier: [6, 8, 8, 6, 10, 12, 10, 12, 14, 15],
+        soldier: [4, 6, 8, 6, 10, 12, 10, 12, 14, 15],
         rusher:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         rpg:     [0, 0, 1, 2, 3, 3, 4, 4, 5, 5],
         humvee:  [0, 0, 0, 1, 1, 2, 2, 3, 3, 4],
@@ -849,13 +849,27 @@
         enemy.y += Math.sin(ang) * enemy.speed * dt;
         enemy.angle = ang; enemy.turretAngle = ang;
         resolveWallCollision(enemy);
-        // melee hit
-        // Must actually overlap radii to count as melee (was way too generous)
-        if (d < enemy.radius + p.radius - 2 && enemy.meleeCooldown <= 0 && p.invuln <= 0) {
+
+        // Push enemy out of the player's footprint so they can't visually overlap
+        // (this is why "sparks just appear on me" — enemies were standing on top of the tank)
+        const contactD = enemy.radius + p.radius;
+        let dxNow = p.x - enemy.x, dyNow = p.y - enemy.y;
+        let dNow = Math.hypot(dxNow, dyNow) || 1;
+        if (dNow < contactD) {
+          enemy.x = p.x - (dxNow / dNow) * contactD;
+          enemy.y = p.y - (dyNow / dNow) * contactD;
+          dxNow = p.x - enemy.x; dyNow = p.y - enemy.y;
+          dNow = Math.hypot(dxNow, dyNow) || 1;
+        }
+
+        // melee hit when actually touching (within 3px of contact line)
+        if (dNow < contactD + 3 && enemy.meleeCooldown <= 0 && p.invuln <= 0) {
           p.hp -= def.meleeDamage;
           p.hitFlash = 0.12;
-          spawnParticles(p.x, p.y, '#f97316', 8, 160);
-          state.shake = Math.min(state.shake + 2, 8);
+          // bigger / brighter damage feedback so the player knows what hit them
+          spawnParticles(p.x, p.y, '#ef4444', 12, 220);
+          spawnParticles(enemy.x, enemy.y, '#fbbf24', 8, 180);
+          state.shake = Math.min(state.shake + 3, 8);
           enemy.meleeCooldown = def.meleeCooldown;
           // thorns
           if (p.upgrades && p.upgrades.thorns) {
