@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Eagle Eye — Tank Run</title>
+  <title>Tank Buster — Edge of Fate</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -21,19 +21,19 @@
       padding: 1.5rem 1rem;
     }
     h1 {
-      margin: 0 0 0.25rem 0;
+      margin: 0 0 0.2rem 0;
       letter-spacing: 4px;
       text-transform: uppercase;
       color: #f8fafc;
       text-shadow: 0 2px 14px rgba(249, 115, 22, 0.5);
-      font-size: 2rem;
+      font-size: 1.9rem;
     }
     .subtitle {
       color: #94a3b8;
       margin: 0 0 1rem 0;
-      letter-spacing: 2px;
+      letter-spacing: 3px;
       text-transform: uppercase;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
     }
     .frame {
       position: relative;
@@ -59,7 +59,7 @@
     .hud__col--center { align-items: center; }
     .hud__label { color: #06b6d4; margin-right: 0.35rem; }
     .hud__value { color: #f8fafc; }
-    .hpbar, .ability {
+    .hpbar, .ability, .secondary {
       width: 200px; height: 12px;
       background: rgba(15, 23, 42, 0.7);
       border: 1px solid #475569;
@@ -69,7 +69,8 @@
     }
     .hpbar__fill { height: 100%; background: linear-gradient(90deg, #f97316 0%, #ea580c 100%); transition: width 0.15s; }
     .ability__fill { height: 100%; background: linear-gradient(90deg, #06b6d4 0%, #0891b2 100%); }
-    .ability__label {
+    .secondary__fill { height: 100%; background: linear-gradient(90deg, #facc15 0%, #ca8a04 100%); }
+    .ability__label, .secondary__label {
       position: absolute; inset: 0;
       display: flex; align-items: center; justify-content: center;
       font-size: 0.65rem; letter-spacing: 1.2px; color: #f8fafc;
@@ -107,8 +108,11 @@
     .card__desc { color: #cbd5e1; font-size: 0.72rem; margin-top: 0.3rem; line-height: 1.35; }
     .deploy-btn { margin-top: 0.25rem; font: inherit; cursor: pointer; padding: 0.7rem 2.5rem; border: none; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; border-radius: 6px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase; font-size: 0.95rem; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4); transition: transform 0.1s, box-shadow 0.2s; }
     .deploy-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(249, 115, 22, 0.6); }
+    .alt-btn { background: transparent; color: #94a3b8; border: 1px solid #475569; box-shadow: none; }
+    .alt-btn:hover { color: #e2e8f0; border-color: #06b6d4; background-color: rgba(6, 182, 212, 0.1); box-shadow: none; }
+    .btn-row { display: flex; gap: 0.6rem; }
 
-    .controls { margin-top: 0.9rem; color: #94a3b8; font-size: 0.8rem; letter-spacing: 1px; text-align: center; }
+    .controls { margin-top: 0.9rem; color: #94a3b8; font-size: 0.78rem; letter-spacing: 1px; text-align: center; max-width: 760px; }
     .controls strong { color: #06b6d4; }
     .back-link { margin-top: 1rem; color: #94a3b8; text-decoration: none; font-size: 0.78rem; letter-spacing: 2px; text-transform: uppercase; border: 1px solid #334155; padding: 0.45rem 1.2rem; border-radius: 6px; transition: color 0.2s, border-color 0.2s, background-color 0.2s; }
     .back-link:hover { color: #e2e8f0; border-color: #06b6d4; background-color: rgba(6, 182, 212, 0.1); }
@@ -119,8 +123,8 @@
   </style>
 </head>
 <body>
-  <h1>Eagle Eye</h1>
-  <p class="subtitle">Tank Run</p>
+  <h1>Tank Buster</h1>
+  <p class="subtitle">Edge of Fate</p>
 
   <div class="frame">
     <canvas id="game" width="960" height="600"></canvas>
@@ -128,6 +132,7 @@
       <div class="hud__col">
         <div><span class="hud__label">Score</span><span class="hud__value" id="score">0</span></div>
         <div class="hpbar"><div class="hpbar__fill" id="hp-fill" style="width:100%"></div></div>
+        <div class="secondary"><div class="secondary__fill" id="secondary-fill" style="width:100%"></div><div class="secondary__label" id="secondary-label">RMB · MG</div></div>
       </div>
       <div class="hud__col hud__col--center">
         <div id="mode-status" class="timer">—</div>
@@ -149,6 +154,15 @@
       <button class="deploy-btn" id="start-button">Start</button>
     </div>
 
+    <div class="overlay hidden" id="pause-menu">
+      <h2>Paused</h2>
+      <p class="lead">P or Esc to resume</p>
+      <div class="btn-row">
+        <button class="deploy-btn" id="resume-button">Resume</button>
+        <button class="deploy-btn alt-btn" id="quit-button">Quit to Menu</button>
+      </div>
+    </div>
+
     <div class="overlay hidden" id="game-over">
       <h2 id="game-over-title" class="defeat-title">Knocked Out</h2>
       <p class="lead" id="game-over-detail">Final Score 0</p>
@@ -156,7 +170,11 @@
     </div>
   </div>
 
-  <p class="controls"><strong>WASD</strong> drive &middot; <strong>Mouse</strong> aim &middot; <strong>LMB</strong> cannon &middot; <strong>RMB</strong> MG &middot; <strong>Q</strong> ability</p>
+  <p class="controls">
+    <strong>WASD</strong> drive &middot; <strong>Mouse</strong> aim &middot;
+    <strong>LMB</strong> primary &middot; <strong>RMB</strong> secondary &middot;
+    <strong>Q</strong> ability &middot; <strong>P / Esc</strong> pause
+  </p>
   <a class="back-link" href="/">Back</a>
 
   <script>
@@ -175,110 +193,159 @@
       };
     }
 
-    const TANKS = {
-      light:  { key:'light',  name:'Light · Scout',     speed:200, hits:2, cannonReload:1.2, mgReload:0.08, ability:'dash',  abilityCooldown:6,  abilityLabel:'Q · Dash',  desc:'Fast and fragile. Hit-and-run. 2 hits.',  radius:12 },
-      medium: { key:'medium', name:'Medium · Striker',  speed:150, hits:3, cannonReload:0.9, mgReload:0.08, ability:'smoke', abilityCooldown:12, abilityLabel:'Q · Smoke', desc:'Balanced. Smoke for escape. 3 hits.',     radius:14 },
-      mbt:    { key:'mbt',    name:'MBT · Iron Wall',   speed:110, hits:5, cannonReload:0.6, mgReload:0.08, ability:'armor', abilityCooldown:14, abilityLabel:'Q · Armor', desc:'Slow. Heavy. Armor invuln 2.5s. 5 hits.', radius:16 },
+    // Damage table: weapon × target tankKey
+    // Designed so cannon does 1/2/4 hits to light/medium/MBT, IFV auto does 3/5/7
+    const DAMAGE = {
+      cannon:     { light: 100, medium: 50, mbt: 25, ifv: 35 },
+      autocannon: { light: 34,  medium: 20, mbt: 15, ifv: 20 },
+      mg:         { light: 14,  medium: 9,  mbt: 6,  ifv: 9 },
+      rocket:     { light: 50,  medium: 35, mbt: 22, ifv: 30 },
     };
-    const HIT_DAMAGE = 100, CANNON_DAMAGE = 100, MG_DAMAGE = 25;
-    function hpFromHits(h) { return h * HIT_DAMAGE; }
+    function damageFor(weapon, target) {
+      const t = DAMAGE[weapon];
+      if (!t) return 20;
+      return t[target.tankKey] || 25;
+    }
+
+    // Player HP per class — tuned so enemy cannon shots kill in 2/3/5/3 hits
+    // (light gets 100 cannon to itself ×2 = 200 HP, mbt gets 25 cannon ×5 = 125 HP)
+    const PLAYER_HP = { light: 200, medium: 150, mbt: 125, ifv: 105 };
+    const BOT_HP = 100;
+
+    const TANKS = {
+      light:  { key:'light', name:'Light · Scout',
+                speed:160, hits:2,
+                primaryWeapon:'cannon',   primaryReload:1.2,
+                secondaryWeapon:'mg',     secondaryReload:0.08,
+                ability:'dash',           abilityCooldown:6,
+                abilityLabel:'Q · Dash',  secondaryLabel:'RMB · MG',
+                desc:'Fast scout. Dash through gaps. 2 hits.',  radius:12 },
+      medium: { key:'medium', name:'Medium · Striker',
+                speed:120, hits:3,
+                primaryWeapon:'cannon',   primaryReload:0.9,
+                secondaryWeapon:'mg',     secondaryReload:0.08,
+                ability:'smoke',          abilityCooldown:12,
+                abilityLabel:'Q · Smoke', secondaryLabel:'RMB · MG',
+                desc:'Balanced. Smoke covers escape. 3 hits.', radius:14 },
+      mbt:    { key:'mbt', name:'MBT · Iron Wall',
+                speed:88, hits:5,
+                primaryWeapon:'cannon',   primaryReload:0.6,
+                secondaryWeapon:'mg',     secondaryReload:0.08,
+                ability:'armor',          abilityCooldown:14,
+                abilityLabel:'Q · Armor', secondaryLabel:'RMB · MG',
+                desc:'Heavy. Fast cannon. Brief invuln. 5 hits.', radius:16 },
+      ifv:    { key:'ifv', name:'IFV · Spearhead',
+                speed:136, hits:3,
+                primaryWeapon:'autocannon', primaryReload:0.18,
+                secondaryWeapon:'rocket',   secondaryReload:4.5,
+                ability:'overdrive',        abilityCooldown:14,
+                abilityLabel:'Q · Overdrive', secondaryLabel:'RMB · Rocket',
+                desc:'Autocannon + lock-on stun rockets. 3 hits.', radius:13 },
+    };
 
     const TEAM_COLORS = {
       red:  {
-        light:  { body:'#ea580c', turret:'#fb923c', accent:'#c2410c' },
-        medium: { body:'#dc2626', turret:'#ef4444', accent:'#991b1b' },
-        mbt:    { body:'#b91c1c', turret:'#dc2626', accent:'#7f1d1d' },
+        light:  { body:'#ea580c', turret:'#fb923c', accent:'#c2410c', wear:'#7c2d12' },
+        medium: { body:'#dc2626', turret:'#ef4444', accent:'#991b1b', wear:'#7f1d1d' },
+        mbt:    { body:'#b91c1c', turret:'#dc2626', accent:'#7f1d1d', wear:'#581c1c' },
+        ifv:    { body:'#c2410c', turret:'#ea580c', accent:'#9a3412', wear:'#7c2d12' },
       },
       blue: {
-        light:  { body:'#0284c7', turret:'#38bdf8', accent:'#075985' },
-        medium: { body:'#0891b2', turret:'#22d3ee', accent:'#155e75' },
-        mbt:    { body:'#155e75', turret:'#0891b2', accent:'#083344' },
+        light:  { body:'#0284c7', turret:'#38bdf8', accent:'#075985', wear:'#0c4a6e' },
+        medium: { body:'#0891b2', turret:'#22d3ee', accent:'#155e75', wear:'#164e63' },
+        mbt:    { body:'#155e75', turret:'#0891b2', accent:'#083344', wear:'#082f49' },
+        ifv:    { body:'#0e7490', turret:'#06b6d4', accent:'#155e75', wear:'#083344' },
       },
     };
 
+    // Maps — now 2400×1600 (was 1800×1200), 1.33× linear, 78% more area
     const MAPS = {
       desert: {
         key:'desert', name:'Desert', desc:'Wide open. Few hiding spots.',
-        width:1800, height:1200,
+        width:2400, height:1600,
         ground:'#c9a273', groundDark:'#8b6f4e',
         gridColor:'rgba(120, 53, 15, 0.07)', wallColor:'#92400e', wallBorder:'#451a03',
         walls:[
-          {x:240,y:200,w:130,h:35},{x:1430,y:250,w:100,h:60},{x:750,y:380,w:200,h:40},
-          {x:450,y:700,w:90,h:90},{x:1500,y:800,w:150,h:35},{x:900,y:850,w:110,h:70},
-          {x:300,y:950,w:60,h:60},{x:1200,y:1050,w:130,h:35},
+          {x:320,y:260,w:130,h:35},{x:1850,y:340,w:100,h:60},{x:1000,y:500,w:200,h:40},
+          {x:600,y:920,w:90,h:90},{x:1900,y:1050,w:150,h:35},{x:1180,y:1100,w:110,h:70},
+          {x:400,y:1250,w:60,h:60},{x:1550,y:1380,w:130,h:35},
+          {x:850,y:200,w:60,h:60},{x:1450,y:780,w:80,h:80},{x:2100,y:580,w:60,h:140},
         ],
-        spawns:{red:{x:200,y:600,r:100}, blue:{x:1600,y:600,r:100}},
-        flagBases:{red:{x:150,y:600}, blue:{x:1650,y:600}},
-        decor:{rock:30, dune:22, scorch:8, palm:5},
+        spawns:{red:{x:240,y:800,r:120}, blue:{x:2160,y:800,r:120}},
+        flagBases:{red:{x:200,y:800}, blue:{x:2200,y:800}},
+        decor:{rock:40, dune:28, scorch:10, palm:6},
       },
       snow: {
         key:'snow', name:'Snowfield', desc:'Heavy cover. Cold and quiet.',
-        width:1800, height:1200,
+        width:2400, height:1600,
         ground:'#cbd5e1', groundDark:'#94a3b8',
         gridColor:'rgba(71, 85, 105, 0.08)', wallColor:'#475569', wallBorder:'#1e293b',
         walls:[
-          {x:200,y:150,w:80,h:80},{x:400,y:250,w:50,h:120},{x:700,y:180,w:120,h:50},
-          {x:1000,y:200,w:80,h:80},{x:1300,y:150,w:100,h:60},{x:1550,y:350,w:60,h:120},
-          {x:250,y:550,w:120,h:50},{x:500,y:650,w:60,h:60},{x:850,y:600,w:80,h:80},
-          {x:1100,y:550,w:100,h:60},{x:1400,y:700,w:50,h:120},{x:350,y:850,w:80,h:80},
-          {x:700,y:950,w:200,h:50},{x:1150,y:900,w:80,h:80},
+          {x:260,y:200,w:80,h:80},{x:540,y:330,w:50,h:150},{x:930,y:240,w:130,h:50},
+          {x:1340,y:270,w:80,h:80},{x:1730,y:200,w:100,h:60},{x:2060,y:470,w:60,h:140},
+          {x:330,y:730,w:130,h:50},{x:670,y:870,w:60,h:60},{x:1130,y:800,w:80,h:80},
+          {x:1470,y:730,w:100,h:60},{x:1870,y:930,w:50,h:140},{x:470,y:1130,w:80,h:80},
+          {x:930,y:1270,w:200,h:50},{x:1530,y:1200,w:80,h:80},{x:280,y:1380,w:120,h:60},
+          {x:2100,y:1250,w:80,h:120},
         ],
-        spawns:{red:{x:150,y:1050,r:100}, blue:{x:1650,y:150,r:100}},
-        flagBases:{red:{x:150,y:1080}, blue:{x:1650,y:120}},
-        decor:{pine:50, snowPile:30, rock:15},
+        spawns:{red:{x:200,y:1400,r:120}, blue:{x:2200,y:200,r:120}},
+        flagBases:{red:{x:200,y:1430}, blue:{x:2200,y:170}},
+        decor:{pine:70, snowPile:40, rock:20},
       },
       tropical: {
         key:'tropical', name:'Jungle', desc:'Dense cover. Close fights.',
-        width:1800, height:1200,
+        width:2400, height:1600,
         ground:'#365314', groundDark:'#1a2e0a',
         gridColor:'rgba(20, 83, 45, 0.12)', wallColor:'#15803d', wallBorder:'#064e3b',
         walls:[
-          {x:150,y:150,w:50,h:50},{x:280,y:250,w:50,h:50},{x:450,y:200,w:50,h:50},
-          {x:600,y:350,w:60,h:60},{x:800,y:200,w:50,h:50},{x:950,y:300,w:70,h:50},
-          {x:1150,y:200,w:50,h:50},{x:1350,y:350,w:50,h:50},{x:1500,y:250,w:60,h:60},
-          {x:250,y:600,w:50,h:50},{x:450,y:700,w:60,h:60},{x:700,y:600,w:50,h:50},
-          {x:900,y:750,w:60,h:60},{x:1100,y:650,w:50,h:50},{x:1300,y:750,w:50,h:50},
-          {x:300,y:950,w:60,h:60},{x:700,y:1000,w:50,h:50},{x:1200,y:950,w:80,h:60},
+          {x:200,y:200,w:50,h:50},{x:380,y:330,w:50,h:50},{x:600,y:280,w:50,h:50},
+          {x:800,y:470,w:60,h:60},{x:1060,y:280,w:50,h:50},{x:1260,y:400,w:70,h:50},
+          {x:1530,y:280,w:50,h:50},{x:1800,y:470,w:50,h:50},{x:2000,y:330,w:60,h:60},
+          {x:330,y:800,w:50,h:50},{x:600,y:930,w:60,h:60},{x:930,y:800,w:50,h:50},
+          {x:1200,y:1000,w:60,h:60},{x:1470,y:870,w:50,h:50},{x:1730,y:1000,w:50,h:50},
+          {x:400,y:1270,w:60,h:60},{x:930,y:1330,w:50,h:50},{x:1600,y:1270,w:80,h:60},
+          {x:2030,y:1100,w:60,h:60},{x:2130,y:680,w:50,h:80},
         ],
-        spawns:{red:{x:150,y:1080,r:80}, blue:{x:1650,y:120,r:80}},
-        flagBases:{red:{x:150,y:1080}, blue:{x:1650,y:120}},
-        decor:{palm:35, bush:50, puddle:10},
+        spawns:{red:{x:200,y:1430,r:100}, blue:{x:2200,y:170,r:100}},
+        flagBases:{red:{x:200,y:1430}, blue:{x:2200,y:170}},
+        decor:{palm:50, bush:70, puddle:14},
       },
       forest: {
         key:'forest', name:'Forest', desc:'Asymmetric tree cover.',
-        width:1800, height:1200,
+        width:2400, height:1600,
         ground:'#3f3f29', groundDark:'#27271a',
         gridColor:'rgba(63, 63, 41, 0.18)', wallColor:'#854d0e', wallBorder:'#451a03',
         walls:[
-          {x:200,y:200,w:100,h:100},{x:500,y:250,w:80,h:120},{x:800,y:180,w:130,h:90},
-          {x:1200,y:220,w:100,h:100},{x:1500,y:350,w:130,h:70},{x:350,y:600,w:130,h:100},
-          {x:700,y:700,w:100,h:100},{x:1050,y:600,w:100,h:130},{x:1400,y:750,w:100,h:100},
-          {x:450,y:950,w:120,h:90},{x:950,y:1000,w:100,h:90},
+          {x:270,y:270,w:100,h:100},{x:670,y:330,w:80,h:130},{x:1070,y:240,w:130,h:90},
+          {x:1600,y:300,w:100,h:100},{x:2000,y:470,w:130,h:70},{x:470,y:800,w:130,h:100},
+          {x:930,y:930,w:100,h:100},{x:1400,y:800,w:100,h:130},{x:1870,y:1000,w:100,h:100},
+          {x:600,y:1270,w:120,h:90},{x:1270,y:1330,w:100,h:90},{x:1730,y:1330,w:120,h:80},
+          {x:2070,y:700,w:120,h:90},
         ],
-        spawns:{red:{x:150,y:600,r:100}, blue:{x:1650,y:600,r:100}},
-        flagBases:{red:{x:150,y:600}, blue:{x:1650,y:600}},
-        decor:{oak:30, pine:25, bush:30},
+        spawns:{red:{x:200,y:800,r:120}, blue:{x:2200,y:800,r:120}},
+        flagBases:{red:{x:200,y:800}, blue:{x:2200,y:800}},
+        decor:{oak:40, pine:35, bush:42},
       },
       fulda: {
         key:'fulda', name:'Fulda Pass', desc:'Cold War lanes. Tight corridors.',
-        width:1800, height:1200,
+        width:2400, height:1600,
         ground:'#4d4d3c', groundDark:'#2e2e24',
         gridColor:'rgba(75, 85, 99, 0.12)', wallColor:'#525252', wallBorder:'#171717',
         walls:[
-          {x:350,y:100,w:50,h:350},{x:750,y:100,w:50,h:250},{x:1100,y:200,w:50,h:350},
-          {x:1450,y:100,w:50,h:300},{x:500,y:550,w:150,h:60},{x:950,y:650,w:200,h:60},
-          {x:250,y:750,w:60,h:200},{x:600,y:850,w:200,h:60},{x:1300,y:800,w:60,h:250},
-          {x:1500,y:950,w:200,h:60},
+          {x:470,y:130,w:60,h:470},{x:1000,y:130,w:60,h:330},{x:1470,y:270,w:60,h:470},
+          {x:1930,y:130,w:60,h:400},{x:670,y:730,w:200,h:60},{x:1270,y:870,w:200,h:60},
+          {x:330,y:1000,w:60,h:270},{x:800,y:1130,w:200,h:60},{x:1730,y:1070,w:60,h:330},
+          {x:2000,y:1270,w:270,h:60},{x:150,y:730,w:50,h:200},{x:2200,y:530,w:50,h:200},
         ],
-        spawns:{red:{x:120,y:600,r:90}, blue:{x:1680,y:600,r:90}},
-        flagBases:{red:{x:120,y:600}, blue:{x:1680,y:600}},
-        decor:{oak:15, hulk:8, crater:12, scorch:6},
+        spawns:{red:{x:160,y:800,r:110}, blue:{x:2240,y:800,r:110}},
+        flagBases:{red:{x:160,y:800}, blue:{x:2240,y:800}},
+        decor:{oak:20, hulk:12, crater:18, scorch:10},
       },
     };
 
     function generateDecorations(mapKey) {
       const m = MAPS[mapKey];
-      const rng = seededRng(mapKey);
+      const rng = seededRng(mapKey + '-v4');
       const decos = [];
       function tooClose(x, y, minDist) {
         for (const w of m.walls) {
@@ -286,14 +353,14 @@
           const cy = clamp(y, w.y, w.y + w.h);
           if (Math.hypot(x - cx, y - cy) < minDist) return true;
         }
-        if (Math.hypot(x - m.spawns.red.x, y - m.spawns.red.y) < 80) return true;
-        if (Math.hypot(x - m.spawns.blue.x, y - m.spawns.blue.y) < 80) return true;
+        if (Math.hypot(x - m.spawns.red.x, y - m.spawns.red.y) < 90) return true;
+        if (Math.hypot(x - m.spawns.blue.x, y - m.spawns.blue.y) < 90) return true;
         return false;
       }
       function tryPlace(type, count, sizeMin, sizeMax, avoidRadius) {
         for (let i = 0; i < count; i++) {
           let tries = 0;
-          while (tries < 20) {
+          while (tries < 25) {
             const x = 30 + rng() * (m.width - 60);
             const y = 30 + rng() * (m.height - 60);
             if (!tooClose(x, y, avoidRadius)) {
@@ -305,15 +372,15 @@
         }
       }
       for (const [type, count] of Object.entries(m.decor)) {
-        if      (type === 'rock')     tryPlace('rock', count, 4, 10, 10);
+        if      (type === 'rock')     tryPlace('rock', count, 4, 11, 10);
         else if (type === 'dune')     tryPlace('dune', count, 30, 70, 0);
         else if (type === 'scorch')   tryPlace('scorch', count, 18, 40, 0);
-        else if (type === 'pine')     tryPlace('pine', count, 14, 22, 18);
+        else if (type === 'pine')     tryPlace('pine', count, 14, 24, 18);
         else if (type === 'snowPile') tryPlace('snowPile', count, 20, 45, 0);
         else if (type === 'palm')     tryPlace('palm', count, 14, 22, 18);
         else if (type === 'bush')     tryPlace('bush', count, 8, 14, 8);
         else if (type === 'puddle')   tryPlace('puddle', count, 20, 35, 0);
-        else if (type === 'oak')      tryPlace('oak', count, 16, 26, 22);
+        else if (type === 'oak')      tryPlace('oak', count, 16, 28, 22);
         else if (type === 'hulk')     tryPlace('hulk', count, 22, 32, 25);
         else if (type === 'crater')   tryPlace('crater', count, 30, 55, 0);
       }
@@ -424,7 +491,7 @@
     const FG_DECOR = new Set(['rock','pine','palm','bush','oak','hulk']);
 
     const MODES = {
-      survival: { key:'survival', name:'Survival', desc:'Last 5 minutes alone. Score for kills.',
+      survival: { key:'survival', name:'Survival', desc:'Last 5 minutes alone. Spawns get harder.',
                   playerTeam:'red', hasAllies:false, allyCount:0, enemyCount:3, respawn:false, scoreTarget:null, timeLimit:300 },
       tdm:      { key:'tdm', name:'Team Deathmatch', desc:'5v5 with bots. First to 50 kills wins.',
                   playerTeam:'red', hasAllies:true, allyCount:4, enemyCount:5, respawn:true, scoreTarget:50, timeLimit:null },
@@ -433,20 +500,20 @@
     };
 
     const state = {
-      scene:'menu', selectedMode:'survival', selectedTank:'medium', selectedMap:'desert',
+      scene:'menu',                     // 'menu' | 'playing' | 'paused' | 'gameover'
+      selectedMode:'survival', selectedTank:'medium', selectedMap:'desert',
       mode:null, map:null, decorations:[], tankDef:null,
       units:[], bullets:[], particles:[], smokes:[], flags:[],
       camera:{x:0,y:0}, score:0, scores:{red:0,blue:0},
-      spawnTimer:2, matchTime:0,
-      highScore: parseInt(localStorage.getItem('eagle-eye-high')||'0',10), shake:0,
+      spawnTimer:2, surgeTimer:rand(15, 25), matchTime:0,
+      highScore: parseInt(localStorage.getItem('tankbuster-high')||'0',10), shake:0,
     };
 
     function getPlayer() { return state.units.find(u => u.isPlayer); }
 
     function makeUnit(team, tankKey, x, y, isPlayer) {
       const def = TANKS[tankKey];
-      // Player gets class hits; bots are flat 100hp so cannon one-taps any class
-      const hp = isPlayer ? hpFromHits(def.hits) : 100;
+      const hp = isPlayer ? PLAYER_HP[tankKey] : BOT_HP;
       return {
         isPlayer:!!isPlayer, team, tankKey,
         x, y,
@@ -454,8 +521,8 @@
         turretAngle: team==='red'?0:Math.PI,
         hp, maxHp: hp,
         speed: isPlayer ? def.speed : def.speed * 0.5,
-        cannonCooldown:0, mgCooldown:0, abilityCooldown:0,
-        abilityActive:0, invuln:0,
+        primaryCooldown:0, secondaryCooldown:0, abilityCooldown:0,
+        abilityActive:0, invuln:0, stun:0,
         radius: def.radius, hitFlash:0,
         alive:true, respawnTimer:0, hasFlag:null,
       };
@@ -468,13 +535,16 @@
       return { x: z.x + Math.cos(a)*r, y: z.y + Math.sin(a)*r };
     }
 
-    function makeBullet(x, y, angle, owner, type) {
-      const speeds = { cannon:420, mg:720 };
-      const damages = { cannon:CANNON_DAMAGE, mg:MG_DAMAGE };
+    function makeBullet(x, y, angle, owner, weapon) {
+      const speeds = { cannon:420, autocannon:560, mg:720, rocket:230 };
       return {
-        x, y, vx:Math.cos(angle)*speeds[type], vy:Math.sin(angle)*speeds[type],
-        owner, ownerTeam: owner.team, type, damage:damages[type],
-        life: type==='cannon'?3:1.4, radius: type==='cannon'?4:2.5,
+        x, y, vx:Math.cos(angle)*speeds[weapon], vy:Math.sin(angle)*speeds[weapon],
+        owner, ownerTeam: owner.team, weapon,
+        life: weapon==='cannon'?3 : weapon==='mg'?1.4 : weapon==='autocannon'?2 : 4,
+        radius: weapon==='cannon'?4 : weapon==='mg'?2.5 : weapon==='autocannon'?3 : 4.5,
+        // homing for rocket
+        homingTarget: null,
+        trailTimer: 0,
       };
     }
     function spawnParticles(x, y, color, count, spread) {
@@ -494,7 +564,12 @@
 
     window.addEventListener('keydown', e => {
       const k = e.key.toLowerCase();
-      if (!keys[k] && k === 'q' && state.scene === 'playing') tryUseAbility(getPlayer());
+      if (!keys[k]) {
+        if (k === 'q' && state.scene === 'playing') tryUseAbility(getPlayer());
+        if ((k === 'p' || k === 'escape') && (state.scene === 'playing' || state.scene === 'paused')) {
+          togglePause();
+        }
+      }
       keys[k] = true;
       if (k === ' ') e.preventDefault();
     });
@@ -507,6 +582,16 @@
     canvas.addEventListener('mousedown', e => { if (e.button === 0) mouse.left = true; if (e.button === 2) mouse.right = true; });
     window.addEventListener('mouseup', e => { if (e.button === 0) mouse.left = false; if (e.button === 2) mouse.right = false; });
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    function togglePause() {
+      if (state.scene === 'playing') {
+        state.scene = 'paused';
+        document.getElementById('pause-menu').classList.remove('hidden');
+      } else if (state.scene === 'paused') {
+        state.scene = 'playing';
+        document.getElementById('pause-menu').classList.add('hidden');
+      }
+    }
 
     function resolveWallCollision(entity) {
       for (const w of state.map.walls) {
@@ -533,18 +618,63 @@
     }
 
     function tryUseAbility(u) {
-      if (!u || !u.alive || u.abilityCooldown > 0) return;
+      if (!u || !u.alive || u.abilityCooldown > 0 || u.stun > 0) return;
       const def = TANKS[u.tankKey];
-      if (def.ability === 'dash')       { u.abilityActive = 0.3; u.invuln = Math.max(u.invuln, 0.6); }
-      else if (def.ability === 'smoke') { state.smokes.push(makeSmoke(u.x, u.y)); }
-      else if (def.ability === 'armor') { u.invuln = Math.max(u.invuln, 2.5); u.abilityActive = 2.5; }
+      if (def.ability === 'dash')          { u.abilityActive = 0.3; u.invuln = Math.max(u.invuln, 0.6); }
+      else if (def.ability === 'smoke')    { state.smokes.push(makeSmoke(u.x, u.y)); }
+      else if (def.ability === 'armor')    { u.invuln = Math.max(u.invuln, 2.5); u.abilityActive = 2.5; }
+      else if (def.ability === 'overdrive'){ u.abilityActive = 3; }
       u.abilityCooldown = def.abilityCooldown;
+    }
+
+    function nearestEnemyToUnit(u) {
+      let best = null, bestD = Infinity;
+      for (const o of state.units) {
+        if (!o.alive || o.team === u.team) continue;
+        const d = dist(u, o);
+        if (d < bestD) { best = o; bestD = d; }
+      }
+      return best;
+    }
+
+    function fireWeapon(unit, weapon, angle) {
+      const def = TANKS[unit.tankKey];
+      let mx = unit.x + Math.cos(angle) * 24;
+      let my = unit.y + Math.sin(angle) * 24;
+      if (weapon === 'mg' || weapon === 'autocannon') {
+        const spread = (Math.random() - 0.5) * 0.06;
+        angle += spread;
+      }
+      const b = makeBullet(mx, my, angle, unit, weapon);
+      if (weapon === 'rocket') {
+        b.homingTarget = nearestEnemyToUnit(unit);
+        spawnParticles(mx, my, '#fbbf24', 12, 200);
+      } else if (weapon === 'cannon') {
+        spawnParticles(mx, my, '#fdba74', 8, 280);
+      } else if (weapon === 'autocannon') {
+        spawnParticles(mx, my, '#fbbf24', 3, 120);
+      } else if (weapon === 'mg') {
+        spawnParticles(mx, my, '#fbbf24', 1, 80);
+      }
+      state.bullets.push(b);
+      state.shake = Math.min(state.shake + (weapon === 'cannon' ? 5 : (weapon === 'rocket' ? 6 : (weapon === 'autocannon' ? 1.2 : 0.5))), 9);
     }
 
     function updatePlayer(dt) {
       const p = getPlayer();
       if (!p || !p.alive) return;
       const def = TANKS[p.tankKey];
+
+      p.primaryCooldown = Math.max(0, p.primaryCooldown - dt);
+      p.secondaryCooldown = Math.max(0, p.secondaryCooldown - dt);
+      p.abilityCooldown = Math.max(0, p.abilityCooldown - dt);
+      p.abilityActive = Math.max(0, p.abilityActive - dt);
+      p.invuln = Math.max(0, p.invuln - dt);
+      p.stun = Math.max(0, p.stun - dt);
+      p.hitFlash = Math.max(0, p.hitFlash - dt);
+
+      if (p.stun > 0) return;
+
       let dx = 0, dy = 0;
       if (keys['w'] || keys['arrowup']) dy -= 1;
       if (keys['s'] || keys['arrowdown']) dy += 1;
@@ -560,44 +690,28 @@
         p.y += dy * p.speed * speedMult * dt;
       }
       resolveWallCollision(p);
+
       const mwX = mouse.x + state.camera.x;
       const mwY = mouse.y + state.camera.y;
       p.turretAngle = Math.atan2(mwY - p.y, mwX - p.x);
-      p.cannonCooldown = Math.max(0, p.cannonCooldown - dt);
-      p.mgCooldown = Math.max(0, p.mgCooldown - dt);
-      p.abilityCooldown = Math.max(0, p.abilityCooldown - dt);
-      p.abilityActive = Math.max(0, p.abilityActive - dt);
-      p.invuln = Math.max(0, p.invuln - dt);
-      p.hitFlash = Math.max(0, p.hitFlash - dt);
-      if (mouse.left && p.cannonCooldown <= 0) {
-        const mx = p.x + Math.cos(p.turretAngle)*26;
-        const my = p.y + Math.sin(p.turretAngle)*26;
-        state.bullets.push(makeBullet(mx, my, p.turretAngle, p, 'cannon'));
-        p.cannonCooldown = def.cannonReload;
-        spawnParticles(mx, my, '#fdba74', 8, 280);
-        state.shake = Math.min(state.shake + 5, 9);
+
+      // primary fire (LMB)
+      if (mouse.left && p.primaryCooldown <= 0) {
+        let reload = def.primaryReload;
+        if (def.ability === 'overdrive' && p.abilityActive > 0) reload *= 0.5;
+        fireWeapon(p, def.primaryWeapon, p.turretAngle);
+        p.primaryCooldown = reload;
       }
-      if (mouse.right && p.mgCooldown <= 0) {
-        const spread = (Math.random()-0.5)*0.05;
-        const mx = p.x + Math.cos(p.turretAngle)*22;
-        const my = p.y + Math.sin(p.turretAngle)*22;
-        state.bullets.push(makeBullet(mx, my, p.turretAngle + spread, p, 'mg'));
-        p.mgCooldown = def.mgReload;
-        spawnParticles(mx, my, '#fbbf24', 1, 80);
-        state.shake = Math.min(state.shake + 0.5, 3);
+      // secondary (RMB)
+      if (mouse.right && p.secondaryCooldown <= 0) {
+        fireWeapon(p, def.secondaryWeapon, p.turretAngle);
+        p.secondaryCooldown = def.secondaryReload;
       }
     }
 
     function botPickTarget(bot) {
-      let best = null, bestD = Infinity;
-      for (const u of state.units) {
-        if (!u.alive || u.team === bot.team) continue;
-        const d = dist(bot, u);
-        if (d < bestD) { best = u; bestD = d; }
-      }
-      return best;
+      return nearestEnemyToUnit(bot);
     }
-
     function botCtfGoal(bot) {
       const enemyTeam = bot.team === 'red' ? 'blue' : 'red';
       if (bot.hasFlag) {
@@ -618,20 +732,22 @@
         bot.respawnTimer -= dt;
         if (bot.respawnTimer <= 0 && state.mode.respawn) {
           const sp = randomSpawnPoint(bot.team);
-          bot.x = sp.x; bot.y = sp.y;
-          bot.hp = bot.maxHp; bot.alive = true;
-          bot.cannonCooldown = 0; bot.mgCooldown = 0; bot.abilityCooldown = 0;
-          bot.hasFlag = null;
+          bot.x = sp.x; bot.y = sp.y; bot.hp = bot.maxHp; bot.alive = true;
+          bot.primaryCooldown = 0; bot.secondaryCooldown = 0; bot.abilityCooldown = 0;
+          bot.stun = 0; bot.hasFlag = null;
         }
         return;
       }
       const def = TANKS[bot.tankKey];
-      bot.cannonCooldown = Math.max(0, bot.cannonCooldown - dt);
-      bot.mgCooldown = Math.max(0, bot.mgCooldown - dt);
+      bot.primaryCooldown = Math.max(0, bot.primaryCooldown - dt);
+      bot.secondaryCooldown = Math.max(0, bot.secondaryCooldown - dt);
       bot.abilityCooldown = Math.max(0, bot.abilityCooldown - dt);
       bot.abilityActive = Math.max(0, bot.abilityActive - dt);
       bot.invuln = Math.max(0, bot.invuln - dt);
+      bot.stun = Math.max(0, bot.stun - dt);
       bot.hitFlash = Math.max(0, bot.hitFlash - dt);
+
+      if (bot.stun > 0) return;
 
       let goal;
       if (state.mode.key === 'ctf') goal = botCtfGoal(bot);
@@ -642,7 +758,7 @@
       const dx = goal.x - bot.x, dy = goal.y - bot.y;
       const d = Math.hypot(dx, dy) || 1;
       const ang = Math.atan2(dy, dx);
-      const shouldStrafe = goal.target && d < 250;
+      const shouldStrafe = goal.target && d < 280;
       let moveAng = ang;
       if (shouldStrafe) moveAng = ang + Math.PI/2 * (((bot.x + bot.y) | 0) % 2 === 0 ? 1 : -1);
       bot.x += Math.cos(moveAng) * bot.speed * dt * (shouldStrafe ? 0.5 : 1);
@@ -653,12 +769,9 @@
         bot.turretAngle = Math.atan2(goal.target.y - bot.y, goal.target.x - bot.x);
         const targetHidden = isUnitInSmoke(goal.target);
         const targetD = dist(bot, goal.target);
-        if (!targetHidden && bot.cannonCooldown <= 0 && targetD < 520) {
-          state.bullets.push(makeBullet(
-            bot.x + Math.cos(bot.turretAngle)*22, bot.y + Math.sin(bot.turretAngle)*22,
-            bot.turretAngle, bot, 'cannon'
-          ));
-          bot.cannonCooldown = def.cannonReload + rand(0, 0.6);
+        if (!targetHidden && bot.primaryCooldown <= 0 && targetD < 560) {
+          fireWeapon(bot, def.primaryWeapon, bot.turretAngle);
+          bot.primaryCooldown = def.primaryReload + rand(0, 0.6);
         }
       }
     }
@@ -672,11 +785,53 @@
 
     function updateBullets(dt) {
       const m = state.map;
-      for (const b of state.bullets) { b.x += b.vx*dt; b.y += b.vy*dt; b.life -= dt; }
+      for (const b of state.bullets) {
+        // rocket homing
+        if (b.weapon === 'rocket' && b.homingTarget) {
+          const t = b.homingTarget;
+          if (!t.alive) { b.homingTarget = null; }
+          else {
+            const desiredAng = Math.atan2(t.y - b.y, t.x - b.x);
+            const currentAng = Math.atan2(b.vy, b.vx);
+            let diff = desiredAng - currentAng;
+            while (diff > Math.PI) diff -= Math.PI*2;
+            while (diff < -Math.PI) diff += Math.PI*2;
+            const turn = clamp(diff, -2.4 * dt, 2.4 * dt);
+            const newAng = currentAng + turn;
+            const spd = Math.hypot(b.vx, b.vy);
+            b.vx = Math.cos(newAng) * spd;
+            b.vy = Math.sin(newAng) * spd;
+          }
+        }
+        b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+        // rocket trail
+        if (b.weapon === 'rocket') {
+          b.trailTimer = (b.trailTimer || 0) - dt;
+          if (b.trailTimer <= 0) {
+            b.trailTimer = 0.03;
+            state.particles.push({
+              x: b.x, y: b.y, vx: rand(-20, 20), vy: rand(-20, 20),
+              life: 0.4, maxLife: 0.4, color: 'rgba(180, 180, 180, 0.85)', radius: rand(2, 4),
+            });
+            state.particles.push({
+              x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10),
+              life: 0.25, maxLife: 0.25, color: '#fbbf24', radius: rand(1, 2),
+            });
+          }
+        }
+      }
       state.bullets = state.bullets.filter(b => {
         if (b.life <= 0) return false;
         if (b.x < 0 || b.x > m.width || b.y < 0 || b.y > m.height) return false;
-        if (bulletHitsWall(b)) { spawnParticles(b.x, b.y, '#94a3b8', 4, 140); return false; }
+        if (bulletHitsWall(b)) {
+          if (b.weapon === 'rocket') {
+            spawnParticles(b.x, b.y, '#fbbf24', 16, 320);
+            state.shake = Math.min(state.shake + 4, 9);
+          } else {
+            spawnParticles(b.x, b.y, '#94a3b8', 4, 140);
+          }
+          return false;
+        }
         return true;
       });
     }
@@ -687,10 +842,17 @@
         for (const u of state.units) {
           if (!u.alive || u.team === b.ownerTeam || u.invuln > 0) continue;
           if (Math.hypot(b.x - u.x, b.y - u.y) < u.radius + b.radius) {
-            u.hp -= b.damage;
+            const damage = damageFor(b.weapon, u);
+            u.hp -= damage;
             u.hitFlash = 0.12;
+            if (b.weapon === 'rocket') {
+              u.stun = Math.max(u.stun, 1.5);
+              spawnParticles(b.x, b.y, '#fbbf24', 24, 360);
+              state.shake = Math.min(state.shake + 7, 12);
+            } else {
+              spawnParticles(b.x, b.y, b.weapon==='cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.weapon==='cannon'?14:5);
+            }
             state.bullets.splice(i, 1);
-            spawnParticles(b.x, b.y, b.type==='cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.type==='cannon'?14:5);
             if (u.hp <= 0) onUnitKilled(u, b.owner);
             break;
           }
@@ -752,7 +914,7 @@
         if (!u.alive || !u.hasFlag) continue;
         const ownBase = state.map.flagBases[u.team];
         const ownFlag = state.flags.find(f => f.team === u.team);
-        if (Math.hypot(u.x - ownBase.x, u.y - ownBase.y) < 50 && ownFlag.atBase) {
+        if (Math.hypot(u.x - ownBase.x, u.y - ownBase.y) < 60 && ownFlag.atBase) {
           state.scores[u.team] = (state.scores[u.team] || 0) + 1;
           const carried = state.flags.find(f => f.team === u.hasFlag);
           carried.x = carried.baseX; carried.y = carried.baseY;
@@ -768,22 +930,41 @@
       }
     }
 
+    // More varied survival spawning: regular trickle + occasional surges
     function updateSurvivalSpawning(dt) {
       if (state.mode.key !== 'survival') return;
       state.spawnTimer -= dt;
+      state.surgeTimer -= dt;
       if (state.spawnTimer <= 0) {
-        const target = 3 + Math.floor(state.score / 60);
+        const target = 3 + Math.floor(state.score / 50);
         const aliveCount = state.units.filter(u => !u.isPlayer && u.alive).length;
         if (aliveCount < target) spawnSurvivalEnemy();
-        state.spawnTimer = clamp(2.4 - state.score / 800, 0.6, 2.4);
+        // randomize next spawn interval
+        const baseTimer = clamp(2.4 - state.score / 700, 0.5, 2.4);
+        state.spawnTimer = baseTimer * (0.6 + Math.random() * 0.8);
+      }
+      // surge: spawn 2-4 enemies at once on a longer cooldown
+      if (state.surgeTimer <= 0) {
+        const surgeCount = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < surgeCount; i++) spawnSurvivalEnemy();
+        state.surgeTimer = rand(20, 35);
       }
     }
     function spawnSurvivalEnemy() {
       const p = getPlayer();
       let x, y, tries = 0;
       do { x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++; }
-      while (p && Math.hypot(x - p.x, y - p.y) < 500 && tries < 40);
-      const cls = ['light','medium','medium','mbt'][Math.floor(Math.random()*4)];
+      while (p && Math.hypot(x - p.x, y - p.y) < 600 && tries < 40);
+      // Class mix shifts toward heavier over time
+      const score = state.score;
+      const heavyOdds = clamp(score / 800, 0, 0.4);
+      const ifvOdds = clamp(score / 600, 0, 0.3);
+      const r = Math.random();
+      let cls;
+      if (r < heavyOdds) cls = 'mbt';
+      else if (r < heavyOdds + ifvOdds) cls = 'ifv';
+      else if (r < 0.6) cls = 'medium';
+      else cls = 'light';
       state.units.push(makeUnit('blue', cls, x, y, false));
     }
 
@@ -803,14 +984,12 @@
       state.camera.x = clamp(state.camera.x, 0, state.map.width - VIEW_W);
       state.camera.y = clamp(state.camera.y, 0, state.map.height - VIEW_H);
     }
-
     function updateMatchTime(dt) {
       if (state.mode.timeLimit !== null) {
         state.matchTime -= dt;
         if (state.matchTime <= 0) { state.matchTime = 0; endMatch(true, 'Survived!'); }
       }
     }
-
     function updatePlayerRespawn(dt) {
       const p = getPlayer();
       if (!p) return;
@@ -822,57 +1001,124 @@
         if (p.respawnTimer <= 0) {
           const sp = randomSpawnPoint(p.team);
           p.x = sp.x; p.y = sp.y; p.hp = p.maxHp; p.alive = true;
-          p.cannonCooldown = 0; p.mgCooldown = 0; p.abilityCooldown = 0; p.hasFlag = null;
+          p.primaryCooldown = 0; p.secondaryCooldown = 0; p.abilityCooldown = 0;
+          p.stun = 0; p.hasFlag = null;
           banner.classList.add('hidden');
         }
       } else banner.classList.add('hidden');
     }
 
+    // Tank rendering with extra wear and detail per class
     function renderTank(u) {
       if (!u.alive) return;
       const def = TANKS[u.tankKey];
       const colors = TEAM_COLORS[u.team][u.tankKey];
       const flash = u.hitFlash > 0;
       const invuln = u.invuln > 0;
+      const stunned = u.stun > 0;
       const bodyC = flash ? '#fef3c7' : (invuln ? '#fde047' : colors.body);
       const turC = flash ? '#fef3c7' : (invuln ? '#fef08a' : colors.turret);
       const accC = colors.accent;
+      const wearC = colors.wear;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath();
-      ctx.ellipse(u.x + 4, u.y + 5, def.radius * 1.2, def.radius * 0.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(u.x + 4, u.y + 5, def.radius * 1.25, def.radius * 0.55, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.save();
       ctx.translate(u.x, u.y);
       ctx.rotate(u.angle);
+
       if (u.tankKey === 'light') {
-        ctx.fillStyle = '#1e293b'; ctx.fillRect(-12, -14, 24, 5); ctx.fillRect(-12, 9, 24, 5);
-        ctx.fillStyle = '#0f172a';
-        for (let i = -10; i < 12; i += 4) { ctx.fillRect(i, -14, 2, 5); ctx.fillRect(i, 9, 2, 5); }
+        // tracks
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(-13, -15, 26, 5); ctx.fillRect(-13, 10, 26, 5);
+        ctx.fillStyle = '#1e293b';
+        for (let i = -11; i < 13; i += 3) { ctx.fillRect(i, -15, 1.5, 5); ctx.fillRect(i, 10, 1.5, 5); }
+        // body
         ctx.fillStyle = bodyC; ctx.fillRect(-10, -9, 20, 18);
+        // panel seams
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(-2, -9); ctx.lineTo(-2, 9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(4, -9); ctx.lineTo(4, 9); ctx.stroke();
+        // wear streak
+        ctx.strokeStyle = wearC; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-9, 4); ctx.lineTo(-4, 6); ctx.stroke();
+        // accent stripe
+        ctx.fillStyle = accC; ctx.fillRect(-9, -6, 2, 2);
+        // outline
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.4; ctx.strokeRect(-10, -9, 20, 18);
-        ctx.fillStyle = accC; ctx.fillRect(-9, -6, 2, 3);
+        // tiny antenna pip
+        ctx.fillStyle = '#1e293b'; ctx.fillRect(-9, -10, 1, 2);
       } else if (u.tankKey === 'medium') {
-        ctx.fillStyle = '#1e293b'; ctx.fillRect(-14, -16, 28, 6); ctx.fillRect(-14, 10, 28, 6);
-        ctx.fillStyle = '#0f172a';
-        for (let i = -12; i < 14; i += 5) { ctx.fillRect(i, -16, 2, 6); ctx.fillRect(i, 10, 2, 6); }
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(-14, -16, 28, 6); ctx.fillRect(-14, 10, 28, 6);
+        ctx.fillStyle = '#1e293b';
+        for (let i = -12; i < 14; i += 4) { ctx.fillRect(i, -16, 1.5, 6); ctx.fillRect(i, 10, 1.5, 6); }
         ctx.fillStyle = bodyC; ctx.fillRect(-12, -10, 24, 20);
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(-12, -10, 24, 20);
+        // panel seams
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-2, -10); ctx.lineTo(-2, 10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, -10); ctx.lineTo(6, 10); ctx.stroke();
+        // rivets
+        ctx.fillStyle = wearC;
+        for (const [rx, ry] of [[-10,-8],[10,-8],[-10,8],[10,8]]) {
+          ctx.beginPath(); ctx.arc(rx, ry, 0.9, 0, Math.PI*2); ctx.fill();
+        }
+        // accent stripe
         ctx.fillStyle = accC; ctx.fillRect(-12, -2, 24, 3);
-      } else {
-        ctx.fillStyle = '#1e293b'; ctx.fillRect(-16, -18, 32, 7); ctx.fillRect(-16, 11, 32, 7);
-        ctx.fillStyle = '#0f172a';
-        for (let i = -14; i < 16; i += 5) { ctx.fillRect(i, -18, 2, 7); ctx.fillRect(i, 11, 2, 7); }
+        // weathering streak
+        ctx.strokeStyle = wearC; ctx.lineWidth = 1.1;
+        ctx.beginPath(); ctx.moveTo(-12, 5); ctx.lineTo(-6, 8); ctx.stroke();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(-12, -10, 24, 20);
+      } else if (u.tankKey === 'mbt') {
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(-16, -18, 32, 7); ctx.fillRect(-16, 11, 32, 7);
+        ctx.fillStyle = '#1e293b';
+        for (let i = -14; i < 16; i += 4) { ctx.fillRect(i, -18, 1.5, 7); ctx.fillRect(i, 11, 1.5, 7); }
         ctx.fillStyle = bodyC; ctx.fillRect(-14, -11, 28, 22);
+        // side skirts
+        ctx.fillStyle = accC; ctx.fillRect(-14, -13, 28, 2); ctx.fillRect(-14, 11, 28, 2);
+        // armor panels (multiple seams)
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.9;
+        for (const sx of [-7, 0, 7]) { ctx.beginPath(); ctx.moveTo(sx, -11); ctx.lineTo(sx, 11); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(14, 0); ctx.stroke();
+        // big rivets at corners
+        ctx.fillStyle = wearC;
+        for (const [rx, ry] of [[-12,-9],[12,-9],[-12,9],[12,9],[0,-9],[0,9]]) {
+          ctx.beginPath(); ctx.arc(rx, ry, 1.1, 0, Math.PI*2); ctx.fill();
+        }
+        // accent center panel
+        ctx.fillStyle = accC; ctx.fillRect(-13, -3, 26, 4);
+        // dirt streaks
+        ctx.strokeStyle = wearC; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-13, 6); ctx.lineTo(-5, 9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(8, -8); ctx.lineTo(13, -10); ctx.stroke();
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.7; ctx.strokeRect(-14, -11, 28, 22);
-        ctx.fillStyle = accC;
-        ctx.fillRect(-14, -13, 28, 2);
-        ctx.fillRect(-14, 11, 28, 2);
-        ctx.fillRect(-13, -3, 26, 4);
+      } else { // ifv
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(-14, -15, 28, 5); ctx.fillRect(-14, 10, 28, 5);
+        ctx.fillStyle = '#1e293b';
+        for (let i = -12; i < 14; i += 3.5) { ctx.fillRect(i, -15, 1.4, 5); ctx.fillRect(i, 10, 1.4, 5); }
+        // boxy troop carrier body
+        ctx.fillStyle = bodyC; ctx.fillRect(-13, -10, 26, 20);
+        // ramp lines / panels
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.9;
+        for (const sx of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(sx, -10); ctx.lineTo(sx, 10); ctx.stroke(); }
+        // viewport slits
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(-10, -2, 4, 1.5);
+        ctx.fillRect(-2, -2, 4, 1.5);
+        ctx.fillRect(6, -2, 4, 1.5);
+        // accent / utility rail
+        ctx.fillStyle = accC; ctx.fillRect(-13, -12, 26, 1.5);
+        // weathering
+        ctx.strokeStyle = wearC; ctx.lineWidth = 1.1;
+        ctx.beginPath(); ctx.moveTo(-13, 5); ctx.lineTo(-7, 8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(7, 4); ctx.lineTo(13, 7); ctx.stroke();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(-13, -10, 26, 20);
       }
       ctx.restore();
 
+      // turret
       ctx.save();
       ctx.translate(u.x, u.y);
       ctx.rotate(u.turretAngle);
@@ -880,25 +1126,81 @@
         ctx.fillStyle = turC; ctx.fillRect(0, -2, 16, 4);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2; ctx.strokeRect(0, -2, 16, 4);
         ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = wearC;
+        ctx.beginPath(); ctx.arc(-1.5, -1.5, 1, 0, Math.PI*2); ctx.fill();
       } else if (u.tankKey === 'medium') {
         ctx.fillStyle = turC; ctx.fillRect(0, -2.5, 20, 5);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.4; ctx.strokeRect(0, -2.5, 20, 5);
         ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        // hatch
         ctx.fillStyle = accC; ctx.beginPath(); ctx.arc(-2, 0, 2.5, 0, Math.PI*2); ctx.fill();
-      } else {
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.7; ctx.stroke();
+        // barrel band
+        ctx.fillStyle = wearC; ctx.fillRect(14, -3, 1.5, 6);
+      } else if (u.tankKey === 'mbt') {
         ctx.fillStyle = turC; ctx.fillRect(0, -3.5, 26, 7);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.7; ctx.strokeRect(0, -3.5, 26, 7);
+        // muzzle brake
         ctx.fillRect(24, -4.5, 4, 9); ctx.strokeRect(24, -4.5, 4, 9);
+        // barrel bands
+        ctx.fillStyle = wearC; ctx.fillRect(8, -4, 1.5, 8); ctx.fillRect(16, -4, 1.5, 8);
         ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        // hatch
         ctx.fillStyle = accC; ctx.beginPath(); ctx.arc(-3, 0, 3.5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.8; ctx.stroke();
+        // smokestack
         ctx.fillStyle = '#171717'; ctx.fillRect(-7, -5, 3, 3);
+        // mounted MG
+        ctx.fillStyle = '#171717'; ctx.fillRect(-2, -8, 5, 1.5);
+      } else { // ifv autocannon turret
+        // small low-profile turret
+        ctx.fillStyle = turC;
+        ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.4; ctx.stroke();
+        // autocannon (long thin barrel + box)
+        ctx.fillStyle = turC; ctx.fillRect(0, -2, 22, 4);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(0, -2, 22, 4);
+        ctx.fillStyle = accC; ctx.fillRect(3, -1, 4, 2);
+        ctx.strokeStyle = wearC; ctx.lineWidth = 0.8; ctx.strokeRect(3, -1, 4, 2);
+        // muzzle
+        ctx.fillStyle = '#0a0a0a'; ctx.fillRect(20, -1, 2, 2);
+        // rocket pod on side
+        ctx.fillStyle = accC; ctx.fillRect(-2, -6.5, 6, 2.5);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(-2, -6.5, 6, 2.5);
+        for (let i = 0; i < 3; i++) {
+          ctx.fillStyle = '#0a0a0a';
+          ctx.beginPath(); ctx.arc(-1 + i*2, -5.2, 0.6, 0, Math.PI*2); ctx.fill();
+        }
+        // hatch
+        ctx.fillStyle = wearC;
+        ctx.beginPath(); ctx.arc(-3, 1, 1.5, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
 
+      // invuln glow
       if (invuln) {
-        ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)'; ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)';
+        ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 6, 0, Math.PI*2); ctx.stroke();
       }
+      // stun visual
+      if (stunned) {
+        const ringR = def.radius + 7 + Math.sin(performance.now()/80) * 1.5;
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(u.x, u.y, ringR, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        // lightning marks
+        ctx.fillStyle = '#fde047';
+        for (let i = 0; i < 4; i++) {
+          const a = (performance.now()/100 + i * Math.PI/2) % (Math.PI*2);
+          const px = u.x + Math.cos(a) * (def.radius + 12);
+          const py = u.y + Math.sin(a) * (def.radius + 12);
+          ctx.fillRect(px - 1, py - 3, 2, 6);
+        }
+      }
+      // team marker
       if (state.mode && state.mode.key !== 'survival') {
         ctx.fillStyle = u.team === 'red' ? '#f97316' : '#06b6d4';
         ctx.beginPath(); ctx.arc(u.x, u.y - def.radius - 8, 3, 0, Math.PI*2); ctx.fill();
@@ -936,7 +1238,7 @@
     function renderFlagBase(team, pos) {
       const fc = team === 'red' ? 'rgba(249, 115, 22, 0.25)' : 'rgba(6, 182, 212, 0.25)';
       const fb = team === 'red' ? '#ea580c' : '#0891b2';
-      ctx.fillStyle = fc; ctx.beginPath(); ctx.arc(pos.x, pos.y, 48, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = fc; ctx.beginPath(); ctx.arc(pos.x, pos.y, 56, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = fb; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
     }
 
@@ -971,11 +1273,28 @@
         ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2); ctx.fill();
       }
       for (const b of state.bullets) {
-        if (b.type === 'cannon') {
+        if (b.weapon === 'cannon') {
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fdba74' : '#67e8f9';
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
-        } else {
+        } else if (b.weapon === 'rocket') {
+          ctx.save();
+          const ang = Math.atan2(b.vy, b.vx);
+          ctx.translate(b.x, b.y); ctx.rotate(ang);
+          ctx.fillStyle = '#f97316';
+          ctx.fillRect(-4, -2, 8, 4);
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.moveTo(4, -2); ctx.lineTo(7, 0); ctx.lineTo(4, 2);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#dc2626';
+          ctx.fillRect(-5, -2, 1, 4);
+          ctx.restore();
+        } else if (b.weapon === 'autocannon') {
+          ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
+        } else { // mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
           ctx.beginPath(); ctx.moveTo(b.x - Math.cos(v)*10, b.y - Math.sin(v)*10); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -997,6 +1316,8 @@
       hpFill: document.getElementById('hp-fill'),
       abilityFill: document.getElementById('ability-fill'),
       abilityLabel: document.getElementById('ability-label'),
+      secondaryFill: document.getElementById('secondary-fill'),
+      secondaryLabel: document.getElementById('secondary-label'),
       score: document.getElementById('score'),
       best: document.getElementById('best'),
       tankName: document.getElementById('tank-name'),
@@ -1020,6 +1341,9 @@
         els.abilityLabel.textContent = p.abilityCooldown > 0
           ? `${state.tankDef.abilityLabel} (${p.abilityCooldown.toFixed(1)}s)`
           : state.tankDef.abilityLabel + ' · ready';
+        const sFrac = p.secondaryCooldown > 0 ? 1 - p.secondaryCooldown / state.tankDef.secondaryReload : 1;
+        els.secondaryFill.style.width = (100 * sFrac) + '%';
+        els.secondaryLabel.textContent = state.tankDef.secondaryLabel + (p.secondaryCooldown > 0 ? ` (${p.secondaryCooldown.toFixed(1)}s)` : '');
       }
       if (state.tankDef) els.tankName.textContent = state.tankDef.name;
       if (state.map) els.mapName.textContent = state.map.name;
@@ -1039,6 +1363,8 @@
       state.score = 0; state.scores = { red: 0, blue: 0 };
       state.matchTime = state.mode.timeLimit;
       state.shake = 0;
+      state.spawnTimer = 1.5;
+      state.surgeTimer = rand(20, 35);
 
       const playerTeam = state.mode.playerTeam;
       const sp = state.mode.respawn ? randomSpawnPoint(playerTeam) : { x: state.map.width/2, y: state.map.height/2 };
@@ -1046,21 +1372,21 @@
       state.units.push(player);
 
       if (state.mode.hasAllies) {
-        const allyClasses = ['light','medium','medium','mbt','medium'];
+        const allyClasses = ['light','medium','medium','mbt','ifv'];
         for (let i = 0; i < state.mode.allyCount; i++) {
           const sp2 = randomSpawnPoint(playerTeam);
           state.units.push(makeUnit(playerTeam, allyClasses[i % allyClasses.length], sp2.x, sp2.y, false));
         }
       }
       const enemyTeam = playerTeam === 'red' ? 'blue' : 'red';
-      const enemyClasses = ['light','medium','medium','mbt','medium'];
+      const enemyClasses = ['light','medium','medium','mbt','ifv'];
       for (let i = 0; i < state.mode.enemyCount; i++) {
         let pos;
         if (state.mode.respawn) pos = randomSpawnPoint(enemyTeam);
         else {
           let x, y, tries = 0;
           do { x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++; }
-          while (dist({ x, y }, player) < 500 && tries < 40);
+          while (dist({ x, y }, player) < 600 && tries < 40);
           pos = { x, y };
         }
         state.units.push(makeUnit(enemyTeam, enemyClasses[i % enemyClasses.length], pos.x, pos.y, false));
@@ -1076,7 +1402,7 @@
       state.scene = 'gameover';
       if (state.score > state.highScore) {
         state.highScore = state.score;
-        localStorage.setItem('eagle-eye-high', String(state.score));
+        localStorage.setItem('tankbuster-high', String(state.score));
       }
       const titleEl = document.getElementById('game-over-title');
       titleEl.textContent = headline;
@@ -1116,8 +1442,8 @@
         card.innerHTML = `
           <div class="card__name">${def.name}</div>
           <div class="card__stat">Hits <strong>${def.hits}</strong> · Speed <strong>${def.speed}</strong></div>
-          <div class="card__stat">Cannon <strong>${def.cannonReload}s</strong></div>
-          <div class="card__desc">${def.desc}<br/><strong style="color:#06b6d4">${def.abilityLabel}</strong></div>`;
+          <div class="card__stat">${def.primaryWeapon === 'autocannon' ? 'Auto' : 'Cannon'} <strong>${def.primaryReload}s</strong></div>
+          <div class="card__desc">${def.desc}<br/><strong style="color:#06b6d4">${def.abilityLabel}</strong> &middot; <strong style="color:#facc15">${def.secondaryLabel}</strong></div>`;
         card.addEventListener('click', () => {
           state.selectedTank = key;
           tankCards.querySelectorAll('.card').forEach(c => c.classList.remove('is-selected'));
@@ -1143,11 +1469,20 @@
       buildMatch();
       document.getElementById('menu').classList.add('hidden');
       document.getElementById('game-over').classList.add('hidden');
+      document.getElementById('pause-menu').classList.add('hidden');
     });
     document.getElementById('restart-button').addEventListener('click', () => {
       document.getElementById('game-over').classList.add('hidden');
       document.getElementById('menu').classList.remove('hidden');
       state.scene = 'menu';
+    });
+    document.getElementById('resume-button').addEventListener('click', () => {
+      if (state.scene === 'paused') togglePause();
+    });
+    document.getElementById('quit-button').addEventListener('click', () => {
+      state.scene = 'menu';
+      document.getElementById('pause-menu').classList.add('hidden');
+      document.getElementById('menu').classList.remove('hidden');
     });
 
     let last = 0;
