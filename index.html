@@ -821,17 +821,20 @@
       mg:         'mg.mp3',
     };
     // per-file playback options
+    // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
+    // and play that once per round fired — keeps audio synced to actual fire rate.
+    // `variance` randomizes pitch & volume slightly so identical clips don't sound robotic.
     const SOUND_OPTS = {
-      laser:      { duration: 0.35, volume: 0.45 },   // chop the laser file
+      laser:      { duration: 0.35, volume: 0.45 },
       cannon:     { volume: 0.7 },
       ifv_cannon: { volume: 0.55 },
       ifv_rocket: { volume: 0.65 },
-      heavy_mg:   { volume: 0.55, duration: 0.18 },   // single shot from a longer file
-      mg:         { volume: 0.5, duration: 0.4 },     // play a short burst slice
+      heavy_mg:   { volume: 0.55, duration: 0.12, variance: 0.1 },
+      mg:         { volume: 0.4,  duration: 0.06, variance: 0.18 },
     };
     const soundBuffers = {};
-    const lastPlayed = {};                            // throttling per key
-    const THROTTLE = { mg: 0.45, heavy_mg: 0.16 };
+    const lastPlayed = {};
+    const THROTTLE = {}; // no throttling — single-shot slices sync naturally to fire rate
 
     async function loadSound(key, path) {
       if (!audioCtx) return;
@@ -849,13 +852,19 @@
       if (!buf) return false;
       const now = audioCtx.currentTime;
       const throttle = THROTTLE[key];
-      if (throttle && lastPlayed[key] && now - lastPlayed[key] < throttle) return true; // throttled but consumed
+      if (throttle && lastPlayed[key] && now - lastPlayed[key] < throttle) return true;
       lastPlayed[key] = now;
       const src = audioCtx.createBufferSource();
       src.buffer = buf;
       const g = audioCtx.createGain();
       const opt = SOUND_OPTS[key] || {};
-      g.gain.value = opt.volume != null ? opt.volume : 0.6;
+      let vol = opt.volume != null ? opt.volume : 0.6;
+      if (opt.variance) {
+        // randomize pitch ±15% and volume ±variance for natural-sounding rapid fire
+        src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.18;
+        vol *= 1 + (Math.random() - 0.5) * opt.variance * 2;
+      }
+      g.gain.value = vol;
       src.connect(g).connect(masterGain);
       if (opt.duration) src.start(0, 0, opt.duration);
       else src.start(0);
