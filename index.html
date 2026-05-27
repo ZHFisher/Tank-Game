@@ -167,16 +167,18 @@
     // ============================================================
     // For tank-vs-tank (TDM / CTF), use per-class table from v4.
     const DAMAGE_TANK = {
-      cannon:     { light: 100, medium: 50, mbt: 25, ifv: 35 },
-      autocannon: { light: 34,  medium: 20, mbt: 15, ifv: 20 },
-      mg:         { light: 14,  medium: 9,  mbt: 6,  ifv: 9 },
-      rocket:     { light: 50,  medium: 35, mbt: 22, ifv: 30 },
+      cannon:     { light: 100, medium: 50, mbt: 25, ifv: 35, laser: 35 },
+      autocannon: { light: 34,  medium: 20, mbt: 15, ifv: 20, laser: 20 },
+      mg:         { light: 14,  medium: 9,  mbt: 6,  ifv: 9,  laser: 9  },
+      rocket:     { light: 50,  medium: 35, mbt: 22, ifv: 30, laser: 30 },
+      laser:      { light: 60,  medium: 40, mbt: 25, ifv: 35, laser: 35 },
+      heavy_mg:   { light: 22,  medium: 14, mbt: 9,  ifv: 14, laser: 14 },
     };
     // Flat per-shot damage for everything else (Onslaught enemies)
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
       rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 4,
-      pistol: 5, smg: 3,
+      pistol: 5, smg: 3, laser: 60, heavy_mg: 22,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -187,7 +189,7 @@
       return base;
     }
 
-    const PLAYER_HP = { light: 200, medium: 150, mbt: 125, ifv: 105 };
+    const PLAYER_HP = { light: 200, medium: 150, mbt: 125, ifv: 105, laser: 130 };
     const BOT_HP = 100;
 
     // Tank classes (player + TDM/CTF bots)
@@ -209,10 +211,17 @@
       mbt:    { key:'mbt', name:'MBT · Iron Wall',
                 speed:88, hits:5,
                 primaryWeapon:'cannon',   primaryReload:0.6,
-                secondaryWeapon:'mg',     secondaryReload:0.08,
+                secondaryWeapon:'heavy_mg', secondaryReload:0.18,
                 ability:'armor',          abilityCooldown:14,
-                abilityLabel:'Q · Armor', secondaryLabel:'RMB · MG',
-                desc:'Heavy. Fast cannon. Brief invuln. 5 hits.', radius:16 },
+                abilityLabel:'Q · Armor', secondaryLabel:'RMB · 50 cal',
+                desc:'Heavy. Fast cannon. 50-cal coax. 5 hits.', radius:16 },
+      laser:  { key:'laser', name:'Laser · Phoenix',
+                speed:130, hits:3,
+                primaryWeapon:'laser',    primaryReload:0.45,
+                secondaryWeapon:'mg',     secondaryReload:0.09,
+                ability:'overdrive',      abilityCooldown:14,
+                abilityLabel:'Q · Overload', secondaryLabel:'RMB · MG',
+                desc:'Piercing laser bolts. Hits 3 targets in a line.', radius:13 },
       ifv:    { key:'ifv', name:'IFV · Spearhead',
                 speed:136, hits:3,
                 primaryWeapon:'autocannon', primaryReload:0.18,
@@ -285,12 +294,14 @@
         medium: { body:'#dc2626', turret:'#ef4444', accent:'#991b1b', wear:'#7f1d1d' },
         mbt:    { body:'#b91c1c', turret:'#dc2626', accent:'#7f1d1d', wear:'#581c1c' },
         ifv:    { body:'#c2410c', turret:'#ea580c', accent:'#9a3412', wear:'#7c2d12' },
+        laser:  { body:'#be185d', turret:'#ec4899', accent:'#831843', wear:'#500724' },
       },
       blue: {
         light:  { body:'#0284c7', turret:'#38bdf8', accent:'#075985', wear:'#0c4a6e' },
         medium: { body:'#0891b2', turret:'#22d3ee', accent:'#155e75', wear:'#164e63' },
         mbt:    { body:'#155e75', turret:'#0891b2', accent:'#083344', wear:'#082f49' },
         ifv:    { body:'#0e7490', turret:'#06b6d4', accent:'#155e75', wear:'#083344' },
+        laser:  { body:'#6d28d9', turret:'#a78bfa', accent:'#4c1d95', wear:'#2e1065' },
       },
     };
 
@@ -592,26 +603,29 @@
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
                        rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
-                       pistol:130, smg:140 };
+                       pistol:130, smg:140, laser:780, heavy_mg:580 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
         owner, ownerTeam: owner.team, weapon,
         life: weapon==='cannon'||weapon==='heavy_cannon' ? 3.5 :
-              weapon==='mg'||weapon==='humvee_mg' ? 1.5 :
+              weapon==='mg'||weapon==='humvee_mg'||weapon==='heavy_mg' ? 1.5 :
               weapon==='autocannon' ? 2.2 :
               weapon==='rocket' ? 4 :
-              weapon==='rpg' ? 5 :  // RPG persists until owner dies
+              weapon==='rpg' ? 5 :
               weapon==='mega_volley' ? 4 :
               weapon==='pistol' ? 1.4 :
-              weapon==='smg' ? 1.2 : 2,
+              weapon==='smg' ? 1.2 :
+              weapon==='laser' ? 1.0 : 2,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
+                weapon==='heavy_mg' ? 3.5 :
                 weapon==='autocannon' ? 3 :
                 weapon==='rocket'||weapon==='rpg' ? 5 :
                 weapon==='mega_volley' ? 5 :
                 weapon==='pistol' ? 3 :
-                weapon==='smg' ? 2.5 : 3,
+                weapon==='smg' ? 2.5 :
+                weapon==='laser' ? 4 : 3,
         homingTarget: null,
         piercesLeft: 0,
         trailTimer: 0,
@@ -683,7 +697,7 @@
     // ============================================================
     // Audio — meow.mp3 for ability + synthesized weapon SFX
     // ============================================================
-    const MEOW_RATE = { light: 1.45, medium: 1.0, mbt: 0.7, ifv: 1.18 };
+    const MEOW_RATE = { light: 1.45, medium: 1.0, mbt: 0.7, ifv: 1.18, laser: 1.6 };
     const meows = {};
     for (const k of Object.keys(MEOW_RATE)) {
       const a = new Audio('meow.mp3');
@@ -797,16 +811,87 @@
       osc.start(t); osc.stop(t + 0.2);
     }
 
+    // Real MP3 weapon sounds — loaded as AudioBuffers so we can play slices (e.g. trim long laser file)
+    const SOUND_FILES = {
+      cannon:     'cannon.mp3',
+      ifv_cannon: 'ifv_cannon.mp3',
+      ifv_rocket: 'ifv_rocket.mp3',
+      laser:      'laser.mp3',
+      heavy_mg:   'heavy_mg.mp3',
+      mg:         'mg.mp3',
+    };
+    // per-file playback options
+    const SOUND_OPTS = {
+      laser:      { duration: 0.35, volume: 0.45 },   // chop the laser file
+      cannon:     { volume: 0.7 },
+      ifv_cannon: { volume: 0.55 },
+      ifv_rocket: { volume: 0.65 },
+      heavy_mg:   { volume: 0.55, duration: 0.18 },   // single shot from a longer file
+      mg:         { volume: 0.5, duration: 0.4 },     // play a short burst slice
+    };
+    const soundBuffers = {};
+    const lastPlayed = {};                            // throttling per key
+    const THROTTLE = { mg: 0.45, heavy_mg: 0.16 };
+
+    async function loadSound(key, path) {
+      if (!audioCtx) return;
+      try {
+        const res = await fetch(path);
+        const arr = await res.arrayBuffer();
+        soundBuffers[key] = await audioCtx.decodeAudioData(arr);
+      } catch (e) { /* file missing — synth fallback will be used */ }
+    }
+    for (const [k, p] of Object.entries(SOUND_FILES)) loadSound(k, p);
+
+    function playClip(key) {
+      if (!audioCtx) return false;
+      const buf = soundBuffers[key];
+      if (!buf) return false;
+      const now = audioCtx.currentTime;
+      const throttle = THROTTLE[key];
+      if (throttle && lastPlayed[key] && now - lastPlayed[key] < throttle) return true; // throttled but consumed
+      lastPlayed[key] = now;
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const g = audioCtx.createGain();
+      const opt = SOUND_OPTS[key] || {};
+      g.gain.value = opt.volume != null ? opt.volume : 0.6;
+      src.connect(g).connect(masterGain);
+      if (opt.duration) src.start(0, 0, opt.duration);
+      else src.start(0);
+      return true;
+    }
+
     function playWeaponSound(weapon) {
+      // try real clip first, fall back to synth
+      let key = null;
+      switch (weapon) {
+        case 'cannon':
+        case 'heavy_cannon':
+        case 'mega_volley':   key = 'cannon'; break;
+        case 'autocannon':    key = 'ifv_cannon'; break;
+        case 'rocket':
+        case 'rpg':           key = 'ifv_rocket'; break;
+        case 'laser':         key = 'laser'; break;
+        case 'heavy_mg':
+        case 'humvee_mg':     key = 'heavy_mg'; break;
+        case 'mg':
+        case 'pistol':
+        case 'smg':           key = 'mg'; break;
+      }
+      if (key && playClip(key)) return;
+      // synth fallback
       switch (weapon) {
         case 'cannon': playCannon(false); break;
         case 'heavy_cannon':
         case 'mega_volley': playCannon(true); break;
         case 'autocannon':
-        case 'humvee_mg': playMG(true); break;
+        case 'humvee_mg':
+        case 'heavy_mg': playMG(true); break;
         case 'mg':
         case 'pistol':
-        case 'smg': playMG(false); break;
+        case 'smg':
+        case 'laser': playMG(false); break;
         case 'rocket':
         case 'rpg': playRocket(); break;
       }
@@ -855,6 +940,11 @@
       } else if (weapon === 'cannon') {
         spawnParticles(mx, my, '#fdba74', 8, 280);
         if (unit.upgrades && unit.upgrades.pierce) b.piercesLeft = unit.upgrades.pierce;
+      } else if (weapon === 'laser') {
+        b.piercesLeft = 3 + (unit.upgrades && unit.upgrades.pierce ? unit.upgrades.pierce : 0);
+        spawnParticles(mx, my, '#67e8f9', 10, 220);
+      } else if (weapon === 'heavy_mg') {
+        spawnParticles(mx, my, '#fbbf24', 3, 140);
       } else if (weapon === 'autocannon') {
         spawnParticles(mx, my, '#fbbf24', 3, 120);
       } else if (weapon === 'mg' || weapon === 'humvee_mg') {
@@ -1152,8 +1242,8 @@
               spawnParticles(b.x, b.y, b.weapon==='cannon' || b.weapon==='heavy_cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.weapon==='cannon'?14:5);
             }
             b.hitUnits.add(u);
-            // pierce: cannon stays alive a few times
-            if ((b.weapon === 'cannon') && b.piercesLeft > 0) {
+            // pierce: cannon AND laser stay alive while pierces remain
+            if ((b.weapon === 'cannon' || b.weapon === 'laser') && b.piercesLeft > 0) {
               b.piercesLeft -= 1;
             } else {
               state.bullets.splice(i, 1);
@@ -1436,6 +1526,22 @@
         ctx.beginPath(); ctx.moveTo(-13, 6); ctx.lineTo(-5, 9); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(8, -8); ctx.lineTo(13, -10); ctx.stroke();
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.7; ctx.strokeRect(-14, -11, 28, 22);
+      } else if (u.tankKey === 'laser') {
+        // sleek angular hull with electric accents
+        ctx.fillStyle = '#0f172a'; ctx.fillRect(-13, -15, 26, 5); ctx.fillRect(-13, 10, 26, 5);
+        ctx.fillStyle = '#1e293b';
+        for (let i = -11; i < 13; i += 3.5) { ctx.fillRect(i, -15, 1.3, 5); ctx.fillRect(i, 10, 1.3, 5); }
+        ctx.fillStyle = bodyC; ctx.fillRect(-12, -10, 24, 20);
+        // angled front "wedge" cuts (visual)
+        ctx.fillStyle = wearC;
+        ctx.beginPath(); ctx.moveTo(12, -10); ctx.lineTo(8, -10); ctx.lineTo(12, -6); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(12, 10); ctx.lineTo(8, 10); ctx.lineTo(12, 6); ctx.closePath(); ctx.fill();
+        // electric blue/cyan accent strip
+        ctx.fillStyle = '#06b6d4'; ctx.fillRect(-12, -1, 24, 2);
+        // capacitor ports
+        ctx.fillStyle = '#67e8f9';
+        for (const cx of [-8, -3, 2, 7]) { ctx.beginPath(); ctx.arc(cx, -7, 0.9, 0, Math.PI*2); ctx.fill(); }
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(-12, -10, 24, 20);
       } else { // ifv
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-14, -15, 28, 5); ctx.fillRect(-14, 10, 28, 5);
         ctx.fillStyle = '#1e293b';
@@ -1472,6 +1578,26 @@
         ctx.fillStyle = accC; ctx.beginPath(); ctx.arc(-3, 0, 3.5, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#171717'; ctx.fillRect(-7, -5, 3, 3);
         ctx.fillStyle = '#171717'; ctx.fillRect(-2, -8, 5, 1.5);
+      } else if (u.tankKey === 'laser') {
+        // squat turret base
+        ctx.fillStyle = turC; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.4; ctx.stroke();
+        // long thin laser emitter barrel
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, -1.5, 28, 3);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(0, -1.5, 28, 3);
+        // glowing cyan core stripe
+        ctx.fillStyle = '#06b6d4';
+        ctx.fillRect(0, -0.5, 28, 1);
+        // emitter tip glow
+        ctx.fillStyle = '#67e8f9';
+        ctx.beginPath(); ctx.arc(28, 0, 2.2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(28, 0, 1, 0, Math.PI*2); ctx.fill();
+        // dorsal capacitor ring
+        ctx.fillStyle = accC;
+        ctx.beginPath(); ctx.arc(-3, 0, 3, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
       } else { // ifv
         ctx.fillStyle = turC; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI*2); ctx.fill();
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.4; ctx.stroke();
@@ -1808,19 +1934,40 @@
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else if (b.weapon === 'humvee_mg' || b.weapon === 'pistol' || b.weapon === 'smg') {
+        } else if (b.weapon === 'humvee_mg' || b.weapon === 'pistol' || b.weapon === 'smg' || b.weapon === 'heavy_mg') {
           // visible chunky tracer + bright outline so they read against any biome
           const v = Math.atan2(b.vy, b.vx);
-          const tracerLen = b.weapon === 'pistol' ? 9 : 12;
-          const ballR = b.weapon === 'pistol' ? 3 : (b.weapon === 'smg' ? 2.8 : 3.5);
-          ctx.strokeStyle = '#fb923c'; ctx.lineWidth = 4;
+          const tracerLen = b.weapon === 'pistol' ? 9 : (b.weapon === 'heavy_mg' ? 16 : 12);
+          const ballR = b.weapon === 'pistol' ? 3 :
+                        b.weapon === 'smg' ? 2.8 :
+                        b.weapon === 'heavy_mg' ? 4.2 : 3.5;
+          ctx.strokeStyle = b.weapon === 'heavy_mg' ? '#dc2626' : '#fb923c';
+          ctx.lineWidth = b.weapon === 'heavy_mg' ? 5 : 4;
           ctx.beginPath();
           ctx.moveTo(b.x - Math.cos(v)*tracerLen, b.y - Math.sin(v)*tracerLen);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
-          ctx.fillStyle = '#fbbf24';
+          ctx.fillStyle = b.weapon === 'heavy_mg' ? '#fde047' : '#fbbf24';
           ctx.beginPath(); ctx.arc(b.x, b.y, ballR, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+        } else if (b.weapon === 'laser') {
+          // glowing cyan beam projectile
+          ctx.save();
+          const v = Math.atan2(b.vy, b.vx);
+          ctx.translate(b.x, b.y); ctx.rotate(v);
+          // outer glow
+          ctx.fillStyle = 'rgba(6, 182, 212, 0.45)';
+          ctx.fillRect(-14, -4, 28, 8);
+          // mid
+          ctx.fillStyle = '#06b6d4';
+          ctx.fillRect(-12, -2.5, 24, 5);
+          // inner bright
+          ctx.fillStyle = '#67e8f9';
+          ctx.fillRect(-10, -1.5, 20, 3);
+          // hot core
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-8, -0.6, 16, 1.2);
+          ctx.restore();
         } else { // player mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
