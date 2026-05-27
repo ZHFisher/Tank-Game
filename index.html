@@ -680,16 +680,136 @@
       return false;
     }
 
-    // Per-class meow pitch — same source file, different playback rates so each tank has its own voice.
-    // Each class gets its own Audio instance so they can overlap.
+    // ============================================================
+    // Audio — meow.mp3 for ability + synthesized weapon SFX
+    // ============================================================
     const MEOW_RATE = { light: 1.45, medium: 1.0, mbt: 0.7, ifv: 1.18 };
     const meows = {};
     for (const k of Object.keys(MEOW_RATE)) {
       const a = new Audio('meow.mp3');
-      a.volume = 0.65;
-      a.preload = 'auto';
-      a.playbackRate = MEOW_RATE[k];
+      a.volume = 0.65; a.preload = 'auto'; a.playbackRate = MEOW_RATE[k];
       meows[k] = a;
+    }
+
+    // Web Audio for weapon sounds (synthesized, no asset files)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = AudioCtx ? new AudioCtx() : null;
+    let masterGain = null;
+    if (audioCtx) {
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.22;
+      masterGain.connect(audioCtx.destination);
+    }
+    // Browsers require a user gesture to start audio
+    function ensureAudio() {
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+    }
+    window.addEventListener('click', ensureAudio);
+    window.addEventListener('keydown', ensureAudio);
+
+    function createNoiseBuffer(duration) {
+      const sr = audioCtx.sampleRate;
+      const len = Math.max(1, Math.floor(sr * duration));
+      const buf = audioCtx.createBuffer(1, len, sr);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      return buf;
+    }
+
+    function playMG(heavy) {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const dur = heavy ? 0.08 : 0.05;
+      // tonal pop
+      const osc = audioCtx.createOscillator();
+      osc.type = 'square';
+      const f0 = heavy ? 220 : 280;
+      osc.frequency.setValueAtTime(f0 + Math.random() * 60, t);
+      osc.frequency.exponentialRampToValueAtTime(60, t + dur);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(heavy ? 0.4 : 0.28, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(g).connect(masterGain);
+      osc.start(t); osc.stop(t + dur + 0.02);
+      // noise crunch
+      const nb = audioCtx.createBufferSource();
+      nb.buffer = createNoiseBuffer(dur);
+      const nf = audioCtx.createBiquadFilter();
+      nf.type = 'highpass'; nf.frequency.value = heavy ? 600 : 1200;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(heavy ? 0.22 : 0.16, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      nb.connect(nf).connect(ng).connect(masterGain);
+      nb.start(t); nb.stop(t + dur + 0.02);
+    }
+
+    function playCannon(big) {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const dur = big ? 0.55 : 0.4;
+      // deep boom
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(big ? 95 : 140, t);
+      osc.frequency.exponentialRampToValueAtTime(big ? 28 : 40, t + dur);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(big ? 0.9 : 0.65, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(g).connect(masterGain);
+      osc.start(t); osc.stop(t + dur + 0.05);
+      // noise crack
+      const nb = audioCtx.createBufferSource();
+      nb.buffer = createNoiseBuffer(dur * 0.6);
+      const nf = audioCtx.createBiquadFilter();
+      nf.type = 'lowpass'; nf.frequency.value = big ? 600 : 900;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(big ? 0.55 : 0.4, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.6);
+      nb.connect(nf).connect(ng).connect(masterGain);
+      nb.start(t); nb.stop(t + dur * 0.6 + 0.05);
+    }
+
+    function playRocket() {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      const dur = 0.55;
+      // whoosh — band-passed noise with descending filter
+      const nb = audioCtx.createBufferSource();
+      nb.buffer = createNoiseBuffer(dur);
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = 5;
+      bp.frequency.setValueAtTime(900, t);
+      bp.frequency.exponentialRampToValueAtTime(180, t + dur);
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(0.45, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      nb.connect(bp).connect(ng).connect(masterGain);
+      nb.start(t); nb.stop(t + dur + 0.02);
+      // launch thump
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(70, t);
+      osc.frequency.exponentialRampToValueAtTime(28, t + 0.18);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.45, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(g).connect(masterGain);
+      osc.start(t); osc.stop(t + 0.2);
+    }
+
+    function playWeaponSound(weapon) {
+      switch (weapon) {
+        case 'cannon': playCannon(false); break;
+        case 'heavy_cannon':
+        case 'mega_volley': playCannon(true); break;
+        case 'autocannon':
+        case 'humvee_mg': playMG(true); break;
+        case 'mg':
+        case 'pistol':
+        case 'smg': playMG(false); break;
+        case 'rocket':
+        case 'rpg': playRocket(); break;
+      }
     }
 
     function tryUseAbility(u) {
@@ -749,9 +869,7 @@
         spawnParticles(mx, my, '#f472b6', 14, 320);
       }
       state.bullets.push(b);
-      const shakeBoost = (weapon === 'cannon' || weapon === 'rocket' || weapon === 'heavy_cannon' || weapon === 'mega_volley') ? 5 :
-                        (weapon === 'autocannon') ? 1.2 : 0.5;
-      state.shake = Math.min(state.shake + shakeBoost, 9);
+      playWeaponSound(weapon);
     }
 
     function updatePlayer(dt) {
