@@ -818,13 +818,16 @@
 
     // Real MP3 weapon sounds — loaded as AudioBuffers so we can play slices (e.g. trim long laser file)
     const SOUND_FILES = {
-      cannon:     'cannon.mp3',
-      ifv_cannon: 'ifv_cannon.mp3',
-      ifv_rocket: 'ifv_rocket.mp3',
-      laser:      'laser.mp3',
-      heavy_mg:   'heavy_mg.mp3',
-      mg:         'mg.mp3',
-      allahu:     'allahu.mp3',
+      cannon:       'cannon.mp3',
+      ifv_cannon:   'ifv_cannon.mp3',
+      ifv_rocket:   'ifv_rocket.mp3',
+      laser:        'laser.mp3',
+      heavy_mg:     'heavy_mg.mp3',
+      mg:           'mg.mp3',
+      allahu:       'allahu.mp3',
+      death_npc1:   'death_npc1.mp3',
+      death_npc2:   'death_npc2.mp3',
+      death_female: 'death_female.mp3',
     };
     // per-file playback options
     // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
@@ -835,10 +838,19 @@
       cannon:     { volume: 0.7 },
       ifv_cannon: { volume: 0.55 },
       ifv_rocket: { volume: 0.65 },
-      heavy_mg:   { volume: 0.55, duration: 0.12, variance: 0.1 },
-      mg:         { volume: 0.4,  duration: 0.06, variance: 0.18 },
-      allahu:     { volume: 0.7,  variance: 0.08 },
+      heavy_mg:     { volume: 0.55, duration: 0.12, variance: 0.1 },
+      mg:           { volume: 0.4,  duration: 0.06, variance: 0.18 },
+      allahu:       { volume: 0.7,  duration: 0.5,  variance: 0.08 },
+      death_npc1:   { volume: 0.75, variance: 0.12 },
+      death_npc2:   { volume: 0.75, variance: 0.12 },
+      death_female: { volume: 0.75, variance: 0.12 },
     };
+    // Random pool of soldier death cries
+    const DEATH_POOL = ['allahu', 'death_npc1', 'death_npc2', 'death_female'];
+    function playRandomDeath() {
+      const key = DEATH_POOL[Math.floor(Math.random() * DEATH_POOL.length)];
+      playClip(key);
+    }
 
     // ============================================================
     // Map background music
@@ -1336,9 +1348,9 @@
       spawnParticles(enemy.x, enemy.y, enemy.enemyKind === 'mega' ? '#f472b6' : (enemy.enemyKind === 'super' ? '#a78bfa' : '#fb923c'), enemy.enemyKind === 'mega' ? 40 : 22, 320);
       state.shake = Math.min(state.shake + (enemy.enemyKind === 'mega' ? 9 : 4), 12);
       if (killer && killer.isPlayer) state.score += def.bounty;
-      // Death sound for foot soldiers
+      // Death sound for foot soldiers — random pick from allahu / npc / female pool
       if (enemy.enemyKind === 'soldier' || enemy.enemyKind === 'rusher') {
-        playClip('allahu');
+        playRandomDeath();
       }
     }
 
@@ -2284,8 +2296,8 @@
         updatePlayerRespawn(dt);
         updateMatchTime(dt);
         updateCamera(dt);
+        updateParticles(dt);   // particles only animate while playing (so pause freezes everything)
       }
-      updateParticles(dt);
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
       if (state.scene !== 'menu' && state.map) render();
