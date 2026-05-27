@@ -85,6 +85,21 @@
     .volume-row { display: flex; flex-direction: column; gap: 0.3rem; }
     .volume-row__label { display: flex; justify-content: space-between; color: #94a3b8; letter-spacing: 2px; text-transform: uppercase; font-size: 0.75rem; font-weight: bold; }
     .volume-row__label span { color: #06b6d4; }
+    .next-track-btn {
+      background: rgba(6, 182, 212, 0.15);
+      color: #06b6d4;
+      border: 1px solid #06b6d4;
+      border-radius: 4px;
+      padding: 0.18rem 0.55rem;
+      font: inherit;
+      font-size: 0.65rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+    .next-track-btn:hover { background: rgba(6, 182, 212, 0.3); color: #f8fafc; transform: translateY(-1px); }
+    .next-track-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .volume-row input[type="range"] {
       -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
       background: linear-gradient(90deg, #1e293b, #334155); border: 1px solid #475569; border-radius: 4px; outline: none; cursor: pointer;
@@ -149,7 +164,10 @@
           <input type="range" id="sfx-slider" min="0" max="100" value="100" />
         </div>
         <div class="volume-row">
-          <div class="volume-row__label">Music <span id="music-val">100%</span></div>
+          <div class="volume-row__label">
+            <span>Music <span id="music-val">100%</span></span>
+            <button class="next-track-btn" id="next-track-btn" title="Pick a different track">Skip &#9654;</button>
+          </div>
           <input type="range" id="music-slider" min="0" max="100" value="100" />
         </div>
       </div>
@@ -706,6 +724,10 @@
         state.scene = 'paused'; document.getElementById('pause-menu').classList.remove('hidden');
         pauseMapMusic(true);
         clearAllInput();
+        // refresh next-track button's disabled state when the menu opens
+        const btn = document.getElementById('next-track-btn');
+        const list = MAP_MUSIC[state.selectedMap];
+        if (btn) btn.disabled = !list || list.length < 2 || !state.map;
       } else if (state.scene === 'paused') {
         state.scene = 'playing'; document.getElementById('pause-menu').classList.add('hidden');
         pauseMapMusic(false);
@@ -927,11 +949,17 @@
       // other maps: add tracks here when files are available
     };
     let currentMusic = null;
-    function startMapMusic(mapKey) {
+    let currentMusicSrc = null;
+    function startMapMusic(mapKey, excludeCurrent) {
       stopMapMusic();
       const list = MAP_MUSIC[mapKey];
       if (!list || list.length === 0) return;
-      const choice = list[Math.floor(Math.random() * list.length)];
+      let choices = list;
+      if (excludeCurrent && currentMusicSrc && list.length > 1) {
+        choices = list.filter(s => s !== currentMusicSrc);
+      }
+      const choice = choices[Math.floor(Math.random() * choices.length)];
+      currentMusicSrc = choice;
       currentMusic = new Audio(choice);
       currentMusic.loop = true;
       currentMusic.volume = MUSIC_REF * musicMult;
@@ -943,6 +971,7 @@
         currentMusic.currentTime = 0;
         currentMusic = null;
       }
+      currentMusicSrc = null;
     }
     function pauseMapMusic(paused) {
       if (!currentMusic) return;
@@ -2367,6 +2396,19 @@
       musicVal.textContent = musicSlider.value + '%';
       applyVolumes();
       localStorage.setItem('tb-music', musicMult);
+    });
+
+    // Skip to a different track from the current map's pool
+    const nextTrackBtn = document.getElementById('next-track-btn');
+    function updateNextTrackBtn() {
+      const list = MAP_MUSIC[state.selectedMap];
+      nextTrackBtn.disabled = !list || list.length < 2 || !state.map;
+    }
+    nextTrackBtn.addEventListener('click', () => {
+      if (!state.map) return;
+      const list = MAP_MUSIC[state.selectedMap];
+      if (!list || list.length === 0) return;
+      startMapMusic(state.selectedMap, true);
     });
     document.getElementById('quit-button').addEventListener('click', () => {
       state.scene = 'menu';
