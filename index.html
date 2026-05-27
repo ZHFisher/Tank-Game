@@ -169,16 +169,16 @@
     const DAMAGE_TANK = {
       cannon:     { light: 100, medium: 50, mbt: 25, ifv: 35, laser: 35 },
       autocannon: { light: 34,  medium: 20, mbt: 15, ifv: 20, laser: 20 },
-      mg:         { light: 14,  medium: 9,  mbt: 6,  ifv: 9,  laser: 9  },
+      mg:         { light: 8,   medium: 5,  mbt: 3,  ifv: 5,  laser: 5  },
       rocket:     { light: 50,  medium: 35, mbt: 22, ifv: 30, laser: 30 },
       laser:      { light: 60,  medium: 40, mbt: 25, ifv: 35, laser: 35 },
-      heavy_mg:   { light: 22,  medium: 14, mbt: 9,  ifv: 14, laser: 14 },
+      heavy_mg:   { light: 14,  medium: 9,  mbt: 6,  ifv: 9,  laser: 9  },
     };
     // Flat per-shot damage for everything else (Onslaught enemies)
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
-      rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 4,
-      pistol: 5, smg: 3, laser: 60, heavy_mg: 22,
+      rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 3,
+      pistol: 5, smg: 3, laser: 60, heavy_mg: 14,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -608,15 +608,16 @@
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
         owner, ownerTeam: owner.team, weapon,
-        life: weapon==='cannon'||weapon==='heavy_cannon' ? 3.5 :
-              weapon==='mg'||weapon==='humvee_mg'||weapon==='heavy_mg' ? 1.5 :
-              weapon==='autocannon' ? 2.2 :
-              weapon==='rocket' ? 4 :
-              weapon==='rpg' ? 5 :
-              weapon==='mega_volley' ? 4 :
-              weapon==='pistol' ? 1.4 :
-              weapon==='smg' ? 1.2 :
-              weapon==='laser' ? 1.0 : 2,
+        life: weapon==='cannon'||weapon==='heavy_cannon' ? 6 :
+              weapon==='humvee_mg' ? 4 :
+              weapon==='mg'||weapon==='heavy_mg' ? 2.2 :
+              weapon==='autocannon' ? 3 :
+              weapon==='rocket' ? 6 :
+              weapon==='rpg' ? 10 :          // RPG flies until owner dies; long fuse
+              weapon==='mega_volley' ? 7 :
+              weapon==='pistol' ? 5 :        // enemy bullets get to actually reach you
+              weapon==='smg' ? 4 :
+              weapon==='laser' ? 1.4 : 3,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
                 weapon==='heavy_mg' ? 3.5 :
@@ -828,6 +829,7 @@
       death_npc1:   'death_npc1.mp3',
       death_npc2:   'death_npc2.mp3',
       death_female: 'death_female.mp3',
+      level_up:     'level_up.mp3',
     };
     // per-file playback options
     // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
@@ -844,6 +846,7 @@
       death_npc1:   { volume: 0.75, variance: 0.12 },
       death_npc2:   { volume: 0.75, variance: 0.12 },
       death_female: { volume: 0.75, variance: 0.12 },
+      level_up:     { volume: 0.2 },
     };
     // Random pool of soldier death cries
     const DEATH_POOL = ['allahu', 'death_npc1', 'death_npc2', 'death_female'];
@@ -867,7 +870,7 @@
       const choice = list[Math.floor(Math.random() * list.length)];
       currentMusic = new Audio(choice);
       currentMusic.loop = true;
-      currentMusic.volume = 0.5;
+      currentMusic.volume = 0.3;
       currentMusic.play().catch(()=>{});
     }
     function stopMapMusic() {
@@ -1485,6 +1488,7 @@
         upg.apply(p);
         state.upgradeMaxes[key] = (state.upgradeMaxes[key] || 0) + 1;
       }
+      playClip('level_up');
       document.getElementById('upgrade-pick').classList.add('hidden');
       state.scene = 'playing';
       startNextWave();
