@@ -838,7 +838,7 @@
       cannon:     { volume: 0.7 },
       ifv_cannon: { volume: 0.55 },
       ifv_rocket: { volume: 0.65 },
-      heavy_mg:     { volume: 0.55, duration: 0.12, variance: 0.1 },
+      heavy_mg:     { volume: 0.75, duration: 0.5, variance: 0.08 },
       mg:           { volume: 0.4,  duration: 0.06, variance: 0.18 },
       allahu:       { volume: 0.7,  duration: 0.5,  variance: 0.08 },
       death_npc1:   { volume: 0.75, variance: 0.12 },
@@ -989,8 +989,8 @@
     function fireWeapon(unit, weapon, angle) {
       let mx = unit.x + Math.cos(angle) * 24;
       let my = unit.y + Math.sin(angle) * 24;
-      if (weapon === 'mg' || weapon === 'autocannon' || weapon === 'humvee_mg') {
-        angle += (Math.random() - 0.5) * 0.06;
+      if (weapon === 'mg' || weapon === 'autocannon' || weapon === 'humvee_mg' || weapon === 'heavy_mg') {
+        angle += (Math.random() - 0.5) * 0.05;
       }
       const b = makeBullet(mx, my, angle, unit, weapon);
       if (weapon === 'rocket') {
