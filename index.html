@@ -80,6 +80,23 @@
     .victory-title { color: #4ade80 !important; text-shadow: 0 2px 14px rgba(74, 222, 128, 0.5) !important; }
     .defeat-title { color: #ef4444 !important; text-shadow: 0 2px 14px rgba(239, 68, 68, 0.5) !important; }
     .respawn-banner, .wave-banner { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); background: rgba(15, 23, 42, 0.88); border: 1px solid #facc15; padding: 1rem 2.5rem; border-radius: 8px; color: #f8fafc; letter-spacing: 4px; text-transform: uppercase; font-weight: bold; pointer-events: none; z-index: 5; }
+
+    .volume-controls { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 0.8rem; margin: 0.7rem 0 1.2rem 0; }
+    .volume-row { display: flex; flex-direction: column; gap: 0.3rem; }
+    .volume-row__label { display: flex; justify-content: space-between; color: #94a3b8; letter-spacing: 2px; text-transform: uppercase; font-size: 0.75rem; font-weight: bold; }
+    .volume-row__label span { color: #06b6d4; }
+    .volume-row input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+      background: linear-gradient(90deg, #1e293b, #334155); border: 1px solid #475569; border-radius: 4px; outline: none; cursor: pointer;
+    }
+    .volume-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: linear-gradient(135deg, #06b6d4, #0891b2); border: 1px solid #f8fafc; box-shadow: 0 0 8px rgba(6, 182, 212, 0.6); cursor: pointer;
+    }
+    .volume-row input[type="range"]::-moz-range-thumb {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: linear-gradient(135deg, #06b6d4, #0891b2); border: 1px solid #f8fafc; box-shadow: 0 0 8px rgba(6, 182, 212, 0.6); cursor: pointer;
+    }
     .wave-banner { border-color: #facc15; color: #facc15; }
     .respawn-banner.hidden, .wave-banner.hidden { display: none; }
   </style>
@@ -126,6 +143,16 @@
     <div class="overlay hidden" id="pause-menu">
       <h2>Paused</h2>
       <p class="lead">P or Esc to resume</p>
+      <div class="volume-controls">
+        <div class="volume-row">
+          <div class="volume-row__label">SFX <span id="sfx-val">100%</span></div>
+          <input type="range" id="sfx-slider" min="0" max="100" value="100" />
+        </div>
+        <div class="volume-row">
+          <div class="volume-row__label">Music <span id="music-val">100%</span></div>
+          <input type="range" id="music-slider" min="0" max="100" value="100" />
+        </div>
+      </div>
       <div class="btn-row">
         <button class="deploy-btn" id="resume-button">Resume</button>
         <button class="deploy-btn alt-btn" id="quit-button">Quit to Menu</button>
@@ -705,6 +732,22 @@
       for (const w of state.map.walls) if (b.x > w.x && b.x < w.x+w.w && b.y > w.y && b.y < w.y+w.h) return true;
       return false;
     }
+    // Line of sight — true if no wall sits between `from` and `to`.
+    // Steps along the line in ~20px increments; cheap enough to call per enemy per frame.
+    function hasLineOfSight(from, to) {
+      const dx = to.x - from.x, dy = to.y - from.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return true;
+      const steps = Math.max(2, Math.ceil(dist / 20));
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps;
+        const px = from.x + dx * t, py = from.y + dy * t;
+        for (const w of state.map.walls) {
+          if (px > w.x && px < w.x + w.w && py > w.y && py < w.y + w.h) return false;
+        }
+      }
+      return true;
+    }
     function isUnitInSmoke(u) {
       for (const s of state.smokes) if (Math.hypot(s.x-u.x, s.y-u.y) < s.radius) return true;
       return false;
@@ -725,10 +768,21 @@
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const audioCtx = AudioCtx ? new AudioCtx() : null;
     let masterGain = null;
+    // Reference levels — sliders multiply these
+    const SFX_REF = 0.22;
+    const MUSIC_REF = 0.3;
+    let sfxMult = parseFloat(localStorage.getItem('tb-sfx') || '1');
+    let musicMult = parseFloat(localStorage.getItem('tb-music') || '1');
+    if (isNaN(sfxMult)) sfxMult = 1;
+    if (isNaN(musicMult)) musicMult = 1;
     if (audioCtx) {
       masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.22;
+      masterGain.gain.value = SFX_REF * sfxMult;
       masterGain.connect(audioCtx.destination);
+    }
+    function applyVolumes() {
+      if (masterGain) masterGain.gain.value = SFX_REF * sfxMult;
+      if (currentMusic) currentMusic.volume = MUSIC_REF * musicMult;
     }
     // Browsers require a user gesture to start audio
     function ensureAudio() {
@@ -880,7 +934,7 @@
       const choice = list[Math.floor(Math.random() * list.length)];
       currentMusic = new Audio(choice);
       currentMusic.loop = true;
-      currentMusic.volume = 0.3;
+      currentMusic.volume = MUSIC_REF * musicMult;
       currentMusic.play().catch(()=>{});
     }
     function stopMapMusic() {
@@ -1128,7 +1182,8 @@
         bot.turretAngle = Math.atan2(goal.target.y - bot.y, goal.target.x - bot.x);
         const targetHidden = isUnitInSmoke(goal.target);
         const targetD = dist(bot, goal.target);
-        if (!targetHidden && bot.primaryCooldown <= 0 && targetD < 560) {
+        const canSee = hasLineOfSight(bot, goal.target);
+        if (!targetHidden && canSee && bot.primaryCooldown <= 0 && targetD < 560) {
           fireWeapon(bot, def.primaryWeapon, bot.turretAngle);
           bot.primaryCooldown = def.primaryReload + rand(0, 0.6);
         }
@@ -1180,30 +1235,31 @@
       }
 
       {
+        // Only fire if we actually have a clear line to the player — no more dumping shots into walls
+        const canSee = hasLineOfSight(enemy, p);
         // Burst-fire for humvee only now (rusher went single-shot)
         if (def.weapon === 'humvee_mg') {
           if (enemy.burstLeft > 0) {
             enemy.burstTimer -= dt;
-            if (enemy.burstTimer <= 0 && d < def.range) {
+            if (enemy.burstTimer <= 0 && d < def.range && canSee) {
               const spread = (Math.random() - 0.5) * 0.07;
               fireWeapon(enemy, def.weapon, ang + spread);
               enemy.burstLeft--;
               enemy.burstTimer = def.weaponReload;
             }
-          } else if (enemy.primaryCooldown <= 0 && d < def.range) {
+          } else if (enemy.primaryCooldown <= 0 && d < def.range && canSee) {
             enemy.burstLeft = def.weaponBurst || 1;
             enemy.burstTimer = 0;
             enemy.primaryCooldown = (def.burstGap || def.weaponReload) + rand(0, 0.5);
           }
         } else if (def.weapon === 'mega_volley') {
-          if (enemy.primaryCooldown <= 0 && d < def.range) {
-            // 3-shot spread
+          if (enemy.primaryCooldown <= 0 && d < def.range && canSee) {
             for (let i = -1; i <= 1; i++) {
               fireWeapon(enemy, 'mega_volley', ang + i * 0.12);
             }
             enemy.primaryCooldown = def.weaponReload + rand(0, 0.3);
           }
-        } else if (enemy.primaryCooldown <= 0 && d < def.range) {
+        } else if (enemy.primaryCooldown <= 0 && d < def.range && canSee) {
           fireWeapon(enemy, def.weapon, ang);
           enemy.primaryCooldown = def.weaponReload + rand(0, 0.4);
         }
@@ -2290,6 +2346,28 @@
       state.scene = 'menu';
     });
     document.getElementById('resume-button').addEventListener('click', () => { if (state.scene === 'paused') togglePause(); });
+
+    // Volume sliders
+    const sfxSlider = document.getElementById('sfx-slider');
+    const musicSlider = document.getElementById('music-slider');
+    const sfxVal = document.getElementById('sfx-val');
+    const musicVal = document.getElementById('music-val');
+    sfxSlider.value = Math.round(sfxMult * 100);
+    musicSlider.value = Math.round(musicMult * 100);
+    sfxVal.textContent = Math.round(sfxMult * 100) + '%';
+    musicVal.textContent = Math.round(musicMult * 100) + '%';
+    sfxSlider.addEventListener('input', () => {
+      sfxMult = sfxSlider.value / 100;
+      sfxVal.textContent = sfxSlider.value + '%';
+      applyVolumes();
+      localStorage.setItem('tb-sfx', sfxMult);
+    });
+    musicSlider.addEventListener('input', () => {
+      musicMult = musicSlider.value / 100;
+      musicVal.textContent = musicSlider.value + '%';
+      applyVolumes();
+      localStorage.setItem('tb-music', musicMult);
+    });
     document.getElementById('quit-button').addEventListener('click', () => {
       state.scene = 'menu';
       stopMapMusic();
