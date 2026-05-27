@@ -175,8 +175,8 @@
     // Flat per-shot damage for everything else (Onslaught enemies)
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
-      rpg: 40, heavy_cannon: 30, mega_volley: 25, humvee_mg: 6,
-      pistol: 8, smg: 5,
+      rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 4,
+      pistol: 5, smg: 3,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -225,39 +225,34 @@
     // Onslaught enemies (non-tank). Each is its own creature with different rendering.
     const ENEMIES = {
       soldier: {
-        // ranged now — fires a visible pistol shot, no melee damage
-        name:'Soldier', hp:30, speed:60, radius:8,
-        weapon:'pistol', weaponReload:1.5, range:340,
-        color:'#71717a', accent:'#27272a', bounty:5,
+        name:'Soldier', hp:30, speed:55, radius:9,
+        weapon:'pistol', weaponReload:2.2, range:340,
+        color:'#94a3b8', accent:'#1e293b', bounty:5,
       },
       rusher: {
-        // closes fast and fires a 3-shot SMG burst
-        name:'Rusher', hp:25, speed:95, radius:8,
-        weapon:'smg', weaponReload:0.15, weaponBurst:3, burstGap:1.6, range:280,
-        color:'#7c2d12', accent:'#451a03', bounty:8,
+        name:'Rusher', hp:25, speed:85, radius:9,
+        weapon:'smg', weaponReload:0.2, weaponBurst:3, burstGap:2.6, range:280,
+        color:'#dc2626', accent:'#450a0a', bounty:8,
       },
       rpg: {
-        name:'RPG Trooper', hp:40, speed:50, radius:9,
-        weapon:'rpg', weaponReload:5, range:520, projSpeed:160,
-        color:'#854d0e', accent:'#451a03', bounty:15,
+        name:'RPG Trooper', hp:40, speed:45, radius:10,
+        weapon:'rpg', weaponReload:6, range:520, projSpeed:90,
+        color:'#a16207', accent:'#451a03', bounty:15,
       },
       humvee: {
-        // Slower burst, fewer shots, all fired well inside the camera view
-        name:'Humvee', hp:120, speed:130, radius:14,
-        weapon:'humvee_mg', weaponReload:0.14, weaponBurst:5, burstGap:2.2, range:340,
+        name:'Humvee', hp:120, speed:120, radius:14,
+        weapon:'humvee_mg', weaponReload:0.18, weaponBurst:4, burstGap:3.0, range:320,
         color:'#3f3f3f', accent:'#0a0a0a', bounty:20,
       },
       super: {
-        // Range pulled inside camera view so you see the shooter
-        name:'Super Tank', hp:350, speed:55, radius:18,
-        weapon:'heavy_cannon', weaponReload:1.9, range:460,
-        color:'#7e22ce', accent:'#3b0764', bounty:40,
+        name:'Super Tank', hp:350, speed:50, radius:18,
+        weapon:'heavy_cannon', weaponReload:2.6, range:440,
+        color:'#9333ea', accent:'#3b0764', bounty:40,
       },
       mega: {
-        // Same — boss has to be on screen to threaten you
-        name:'Mega Tank', hp:900, speed:38, radius:24,
-        weapon:'mega_volley', weaponReload:2.8, range:500,
-        color:'#831843', accent:'#500724', bounty:100,
+        name:'Mega Tank', hp:900, speed:35, radius:24,
+        weapon:'mega_volley', weaponReload:3.6, range:480,
+        color:'#db2777', accent:'#500724', bounty:100,
       },
     };
 
@@ -513,11 +508,11 @@
     // Wave compositions for Onslaught
     function generateWave(n) {
       const tables = {
-        soldier: [4, 6, 8, 6, 10, 12, 10, 12, 14, 15],
-        rusher:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        rpg:     [0, 0, 1, 2, 3, 3, 4, 4, 5, 5],
-        humvee:  [0, 0, 0, 1, 1, 2, 2, 3, 3, 4],
-        super:   [0, 0, 0, 0, 1, 1, 1, 2, 2, 3],
+        soldier: [3, 4, 6, 5, 8, 9, 8, 10, 11, 12],
+        rusher:  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        rpg:     [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
+        humvee:  [0, 0, 0, 1, 1, 1, 2, 2, 3, 3],
+        super:   [0, 0, 0, 0, 1, 1, 1, 1, 2, 2],
         mega:    [0, 0, 0, 0, 0, 0, 1, 1, 1, 2],
       };
       const i = Math.min(n - 1, 9);
@@ -595,8 +590,8 @@
     }
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
-                       rpg:110, heavy_cannon:220, mega_volley:200, humvee_mg:340,
-                       pistol:300, smg:380 };
+                       rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
+                       pistol:200, smg:260 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -684,6 +679,11 @@
       return false;
     }
 
+    // Ability sound effect — preloaded so first play has no delay
+    const meow = new Audio('meow.mp3');
+    meow.volume = 0.6;
+    meow.preload = 'auto';
+
     function tryUseAbility(u) {
       if (!u || !u.alive || u.abilityCooldown > 0 || u.stun > 0) return;
       const def = TANKS[u.tankKey];
@@ -694,6 +694,11 @@
       let cd = def.abilityCooldown;
       if (u.upgrades && u.upgrades.abilityMult) cd *= u.upgrades.abilityMult;
       u.abilityCooldown = cd;
+      // play meow
+      try {
+        meow.currentTime = 0;
+        meow.play().catch(()=>{});
+      } catch (e) {}
     }
 
     function nearestEnemyToUnit(u) {
@@ -1386,6 +1391,18 @@
       const flash = u.hitFlash > 0;
       const stunned = u.stun > 0;
       const ang = u.angle;
+
+      // visibility ring — always-on coloured halo so they pop against any biome
+      const ringColor = u.enemyKind === 'mega' ? 'rgba(244, 114, 182, 0.5)' :
+                        u.enemyKind === 'super' ? 'rgba(167, 139, 250, 0.5)' :
+                        u.enemyKind === 'humvee' ? 'rgba(251, 146, 60, 0.45)' :
+                        u.enemyKind === 'rpg' ? 'rgba(234, 88, 12, 0.5)' :
+                        u.enemyKind === 'rusher' ? 'rgba(239, 68, 68, 0.55)' :
+                        'rgba(226, 232, 240, 0.5)'; // soldier
+      ctx.fillStyle = ringColor;
+      ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 5, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 5, 0, Math.PI*2); ctx.stroke();
 
       // shadow
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
