@@ -159,7 +159,7 @@
 
     <div class="overlay hidden" id="upgrade-pick">
       <h2 style="color:#facc15;text-shadow:0 2px 14px rgba(250, 204, 21, 0.5);letter-spacing:4px;">⭐ CONGRATS PATRIOT YOU WELFARED UP ⭐</h2>
-      <p class="lead">Wave <span id="upg-wave">1</span> Cleared · Pick one upgrade</p>
+      <p class="lead">Level <span id="upg-wave">1</span> · Pick one upgrade</p>
       <div class="upgrades-grid" id="upgrade-options"></div>
     </div>
 
@@ -349,6 +349,11 @@
         isBoss:true, weapon:'boss_orb', fireInterval:1.4, spinSpeed:0.9,
         color:'#7f1d1d', accent:'#450a0a', bounty:500,
       },
+      finalboss: {
+        name:'YESKING ASCENDED', hp:14000, speed:16, radius:80,
+        isBoss:true, isFinal:true, weapon:'boss_orb', fireInterval:0.7, spinSpeed:1.4,
+        color:'#7f1d1d', accent:'#450a0a', bounty:5000,
+      },
     };
 
     // Upgrades — Onslaught roguelike picks
@@ -371,6 +376,14 @@
                   apply:(p)=>{ p.upgrades.pierce = (p.upgrades.pierce||0)+1; } },
       secrate:  { name:'Hot Barrel',       icon:'≫', desc:'-20% secondary reload.', max:5,
                   apply:(p)=>{ p.upgrades.secReloadMult = (p.upgrades.secReloadMult||1)*0.8; } },
+      burn:     { name:'Incendiary Rounds', icon:'🔥', desc:'Shots set enemies on fire (+8 dmg/s for 3s).', max:5,
+                  apply:(p)=>{ p.upgrades.burnDps = (p.upgrades.burnDps||0)+8; } },
+      chain:    { name:'Chain Lightning',  icon:'⚡', desc:'Hits arc to +1 nearby enemy.', max:4,
+                  apply:(p)=>{ p.upgrades.chainCount = (p.upgrades.chainCount||0)+1; } },
+      ricochet: { name:'Ricochet',         icon:'⟂', desc:'Shots bounce off walls +1 time.', max:3,
+                  apply:(p)=>{ p.upgrades.ricochet = (p.upgrades.ricochet||0)+1; } },
+      stun:     { name:'Stun Grenades',    icon:'✸', desc:'Periodic stun pulse around you (faster per stack).', max:4,
+                  apply:(p)=>{ p.upgrades.stunGrenade = true; p.upgrades.grenadeInterval = Math.max(2.5, (p.upgrades.grenadeInterval||9)-1.6); p.grenadeTimer = p.upgrades.grenadeInterval; } },
     };
 
     const TEAM_COLORS = {
@@ -594,7 +607,7 @@
     const FG_DECOR = new Set(['rock','pine','palm','bush','oak','hulk']);
 
     const MODES = {
-      onslaught:{ key:'onslaught', name:'Onslaught', desc:'Roguelike waves. Pick upgrades. Survive.',
+      onslaught:{ key:'onslaught', name:'Onslaught', desc:'Endless swarm. Grab XP, level up, survive to 30:00 for the final boss.',
                   playerTeam:'red', hasAllies:false, allyCount:0, enemyCount:0, respawn:false, scoreTarget:null, timeLimit:null, isOnslaught:true },
       tdm:      { key:'tdm', name:'Team Deathmatch', desc:'5v5 with bots. First to 50 kills wins.',
                   playerTeam:'red', hasAllies:true, allyCount:4, enemyCount:5, respawn:true, scoreTarget:50, timeLimit:null },
@@ -635,12 +648,14 @@
       scene:'menu',
       selectedMode:'onslaught', selectedTank:'medium', selectedMap:'desert',
       mode:null, map:null, decorations:[], tankDef:null,
-      units:[], bullets:[], particles:[], smokes:[], flags:[],
+      units:[], bullets:[], particles:[], smokes:[], flags:[], gems:[], lightnings:[], shockwaves:[],
       camera:{x:0,y:0}, score:0, scores:{red:0,blue:0},
       spawnTimer:2, matchTime:0,
       highScore: parseInt(localStorage.getItem('tankbuster-high')||'0',10), shake:0,
-      // Onslaught
+      // Onslaught (continuous, XP-based)
       wave:0, wavePending:[], waveSpawnTimer:0, waveBannerTimer:0, upgradeMaxes:{},
+      xp:0, level:1, xpToNext:5, pendingLevelUps:0,
+      contSpawnTimer:0, miniBossTimer:300, finalBossActive:false, finalBossDefeated:false,
     };
     function getPlayer() { return state.units.find(u => u.isPlayer); }
 
@@ -726,6 +741,7 @@
                 weapon==='laser' ? 4 : 3,
         homingTarget: null,
         piercesLeft: 0,
+        bounces: 0,
         trailTimer: 0,
         hitUnits: new Set(),
       };
@@ -805,6 +821,18 @@
     function bulletHitsWall(b) {
       for (const w of state.map.walls) if (b.x > w.x && b.x < w.x+w.w && b.y > w.y && b.y < w.y+w.h) return true;
       return false;
+    }
+    function reflectBulletOffWall(b) {
+      for (const w of state.map.walls) {
+        if (b.x > w.x && b.x < w.x+w.w && b.y > w.y && b.y < w.y+w.h) {
+          const left = b.x - w.x, right = (w.x + w.w) - b.x;
+          const top = b.y - w.y, bottom = (w.y + w.h) - b.y;
+          const minX = Math.min(left, right), minY = Math.min(top, bottom);
+          if (minX < minY) { b.vx = -b.vx; b.x += (left < right ? -(minX + 2) : (minX + 2)); }
+          else { b.vy = -b.vy; b.y += (top < bottom ? -(minY + 2) : (minY + 2)); }
+          return;
+        }
+      }
     }
     // Line of sight — true if no wall sits between `from` and `to`.
     // Steps along the line in ~20px increments; cheap enough to call per enemy per frame.
@@ -1184,6 +1212,11 @@
         angle += (Math.random() - 0.5) * 0.05;
       }
       const b = makeBullet(mx, my, angle, unit, weapon);
+      // ricochet upgrade — player projectile weapons bounce off walls
+      if (unit.isPlayer && unit.upgrades && unit.upgrades.ricochet &&
+          weapon !== 'rocket' && weapon !== 'rpg') {
+        b.bounces = unit.upgrades.ricochet;
+      }
       if (weapon === 'rocket') {
         b.homingTarget = nearestEnemyToUnit(unit);
         spawnParticles(mx, my, '#fbbf24', 12, 200);
@@ -1229,6 +1262,21 @@
       // HP regen
       if (p.upgrades && p.upgrades.regenRate) {
         p.hp = Math.min(p.maxHp, p.hp + p.upgrades.regenRate * dt);
+      }
+      // Stun grenade — periodic AoE pulse that stuns nearby enemies
+      if (p.upgrades && p.upgrades.stunGrenade) {
+        p.grenadeTimer = (p.grenadeTimer != null ? p.grenadeTimer : p.upgrades.grenadeInterval) - dt;
+        if (p.grenadeTimer <= 0) {
+          const R = 150;
+          for (const e of state.units) {
+            if (e.alive && e.team !== p.team && Math.hypot(e.x - p.x, e.y - p.y) < R) {
+              e.stun = Math.max(e.stun, 2);
+            }
+          }
+          state.shockwaves.push({ x: p.x, y: p.y, r: 0, maxR: R, life: 0.45, maxLife: 0.45 });
+          spawnParticles(p.x, p.y, '#fde047', 20, 280);
+          p.grenadeTimer = p.upgrades.grenadeInterval;
+        }
       }
 
       if (p.stun > 0) return;
@@ -1344,6 +1392,14 @@
           for (let i = 0; i < n; i++) {
             const a = enemy.spinAngle + (i / n) * Math.PI * 2;
             fireWeapon(enemy, 'boss_orb', a);
+          }
+          // FINAL BOSS — bullet hell: add a counter-rotating ring + aimed triple at the player
+          if (def.isFinal) {
+            for (let i = 0; i < n + 4; i++) {
+              fireWeapon(enemy, 'boss_orb', -enemy.spinAngle * 1.3 + (i / (n + 4)) * Math.PI * 2);
+            }
+            const aim = Math.atan2(p.y - enemy.y, p.x - enemy.x);
+            for (let k = -1; k <= 1; k++) fireWeapon(enemy, 'boss_orb', aim + k * 0.2);
           }
           enemy.firePattern++;
           enemy.fireTimer = def.fireInterval;
@@ -1480,6 +1536,13 @@
         if (b.life <= 0) return false;
         if (b.x < 0 || b.x > m.width || b.y < 0 || b.y > m.height) return false;
         if (bulletHitsWall(b)) {
+          // ricochet — reflect off the wall instead of dying
+          if (b.bounces > 0) {
+            b.bounces--;
+            reflectBulletOffWall(b);
+            spawnParticles(b.x, b.y, '#fbbf24', 3, 100);
+            return true;
+          }
           if (b.weapon === 'rocket' || b.weapon === 'rpg') {
             spawnParticles(b.x, b.y, '#fbbf24', 16, 320);
             state.shake = Math.min(state.shake + 4, 9);
@@ -1517,6 +1580,12 @@
               spawnParticles(b.x, b.y, b.weapon==='cannon' || b.weapon==='heavy_cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.weapon==='cannon'?14:5);
             }
             b.hitUnits.add(u);
+            // player-only on-hit effects: burn + chain lightning
+            if (b.owner && b.owner.isPlayer && b.owner.upgrades) {
+              const up = b.owner.upgrades;
+              if (up.burnDps) { u.burn = 3; u.burnDps = Math.max(u.burnDps || 0, up.burnDps); }
+              if (up.chainCount) applyChainLightning(u, b);
+            }
             // pierce: cannon AND laser stay alive while pierces remain
             if ((b.weapon === 'cannon' || b.weapon === 'laser') && b.piercesLeft > 0) {
               b.piercesLeft -= 1;
@@ -1533,6 +1602,51 @@
         }
         if (removed) continue;
       }
+    }
+
+    function applyChainLightning(origin, bullet) {
+      const owner = bullet.owner;
+      let chains = owner.upgrades.chainCount;
+      const hit = new Set([origin]);
+      let from = origin;
+      while (chains > 0) {
+        let best = null, bestD = 200;
+        for (const e of state.units) {
+          if (!e.alive || e.team === bullet.ownerTeam || hit.has(e) || e.invuln > 0) continue;
+          const dd = Math.hypot(from.x - e.x, from.y - e.y);
+          if (dd < bestD) { best = e; bestD = dd; }
+        }
+        if (!best) break;
+        const dmg = damageFor(bullet.weapon, best, owner) * 0.5;
+        best.hp -= dmg;
+        best.hitFlash = 0.12;
+        state.lightnings.push({ x1: from.x, y1: from.y, x2: best.x, y2: best.y, life: 0.18 });
+        hit.add(best);
+        if (best.hp <= 0) { if (best.category === 'enemy') onEnemyKilled(best, owner); else onUnitKilled(best, owner); }
+        from = best;
+        chains--;
+      }
+    }
+
+    // Burn DoT + lightning/shockwave decay
+    function updateStatusEffects(dt) {
+      for (const u of state.units) {
+        if (!u.alive) continue;
+        if (u.burn > 0) {
+          u.burn -= dt;
+          u.hp -= (u.burnDps || 0) * dt;
+          if (Math.random() < 0.25) spawnParticles(u.x, u.y, '#f97316', 1, 50);
+          if (u.hp <= 0) {
+            if (u.category === 'enemy') onEnemyKilled(u, getPlayer());
+            else if (u.isPlayer) endMatch(false, 'Knocked Out');
+            else onUnitKilled(u, null);
+          }
+        }
+      }
+      for (const l of state.lightnings) l.life -= dt;
+      state.lightnings = state.lightnings.filter(l => l.life > 0);
+      for (const s of state.shockwaves) { s.life -= dt; s.r = s.maxR * (1 - s.life / s.maxLife); }
+      state.shockwaves = state.shockwaves.filter(s => s.life > 0);
     }
 
     function onUnitKilled(victim, killer) {
@@ -1559,11 +1673,32 @@
     }
 
     function onEnemyKilled(enemy, killer) {
+      if (!enemy.alive) return;  // guard against double-kill (burn + bullet same frame)
       enemy.alive = false;
       const def = ENEMIES[enemy.enemyKind];
       spawnParticles(enemy.x, enemy.y, enemy.enemyKind === 'mega' ? '#f472b6' : (enemy.enemyKind === 'super' ? '#a78bfa' : '#fb923c'), enemy.enemyKind === 'mega' ? 40 : 22, 320);
       state.shake = Math.min(state.shake + (enemy.enemyKind === 'mega' ? 9 : 4), 12);
       if (killer && killer.isPlayer) state.score += def.bounty;
+
+      // Drop XP gem(s) in Onslaught — bigger enemies drop more
+      if (state.mode.key === 'onslaught') {
+        const xpVal = Math.max(1, Math.round(def.bounty / 4));
+        if (def.isBoss) {
+          // bosses scatter several gems
+          const n = def.isFinal ? 20 : 8;
+          for (let i = 0; i < n; i++) dropGem(enemy.x + rand(-40, 40), enemy.y + rand(-40, 40), Math.round(xpVal / n) + 1);
+        } else {
+          dropGem(enemy.x, enemy.y, xpVal);
+        }
+      }
+
+      // Final boss down → endless free play
+      if (def.isFinal) {
+        state.finalBossActive = false;
+        state.finalBossDefeated = true;
+        showWaveBanner('FINAL BOSS DOWN — FREE PLAY UNLOCKED');
+      }
+
       // Death sound for foot soldiers — random pick from allahu / npc / female pool
       if (enemy.enemyKind === 'soldier' || enemy.enemyKind === 'rusher') {
         playRandomDeath();
@@ -1613,74 +1748,145 @@
       }
     }
 
+    // ============================================================
+    // Onslaught — continuous spawn, XP leveling, time-based bosses
+    // ============================================================
     function updateOnslaught(dt) {
       if (state.mode.key !== 'onslaught') return;
-      // Spawn pending enemies in trickle
-      state.waveSpawnTimer -= dt;
-      if (state.wavePending.length > 0 && state.waveSpawnTimer <= 0) {
-        const kind = state.wavePending.shift();
-        spawnOnslaughtEnemy(kind);
-        // varying gap
-        state.waveSpawnTimer = rand(0.4, 1.0);
+      state.matchTime += dt;
+      const minutes = state.matchTime / 60;
+
+      // continuous spawn — cadence tightens and batch grows with time
+      state.contSpawnTimer -= dt;
+      if (state.contSpawnTimer <= 0) {
+        const aliveMobs = state.units.filter(u => u.category === 'enemy' && u.alive && !ENEMIES[u.enemyKind].isBoss).length;
+        const maxAlive = Math.min(50, 10 + Math.floor(minutes * 3.5));
+        if (aliveMobs < maxAlive) {
+          const batch = 1 + Math.floor(minutes / 2.5);
+          for (let i = 0; i < batch; i++) spawnContEnemy(minutes);
+        }
+        state.contSpawnTimer = clamp(1.5 - minutes * 0.07, 0.35, 1.5);
       }
-      // Check wave clear
-      const aliveEnemies = state.units.filter(u => u.category === 'enemy' && u.alive).length;
-      if (aliveEnemies === 0 && state.wavePending.length === 0) {
-        // wave complete
-        startUpgradePick();
+
+      // mini-boss (YESKING) every 5 minutes, except where the final boss takes over
+      if (!state.finalBossActive && state.matchTime < 1800) {
+        state.miniBossTimer -= dt;
+        if (state.miniBossTimer <= 0) {
+          spawnBoss('yesking');
+          state.miniBossTimer = 300;
+        }
       }
-      // wave banner fade timer
+
+      // FINAL BOSS at 30:00
+      if (state.matchTime >= 1800 && !state.finalBossActive && !state.finalBossDefeated) {
+        spawnBoss('finalboss');
+        state.finalBossActive = true;
+        showWaveBanner('FINAL BOSS — YESKING ASCENDED');
+      }
+
+      // wave banner fade timer (reused for boss/announcement banners)
       if (state.waveBannerTimer > 0) {
         state.waveBannerTimer -= dt;
         if (state.waveBannerTimer <= 0) document.getElementById('wave-banner').classList.add('hidden');
       }
     }
 
-    function spawnOnslaughtEnemy(kind) {
+    function showWaveBanner(text) {
+      const banner = document.getElementById('wave-banner');
+      banner.innerHTML = text;
+      banner.classList.remove('hidden');
+      state.waveBannerTimer = 3;
+    }
+
+    // Time-weighted enemy selection
+    function spawnContEnemy(minutes) {
+      const w = [
+        ['soldier', Math.max(1, 12 - minutes * 1.2)],
+        ['rusher',  minutes >= 1 ? 3 + minutes * 0.8 : 0],
+        ['monkey',  minutes >= 2 ? 2 + minutes * 0.6 : 0],
+        ['rpg',     minutes >= 3 ? 1.5 + minutes * 0.5 : 0],
+        ['humvee',  minutes >= 4 ? 1 + minutes * 0.4 : 0],
+        ['super',   minutes >= 6 ? minutes * 0.3 : 0],
+        ['mega',    minutes >= 9 ? minutes * 0.15 : 0],
+      ];
+      let total = 0; for (const e of w) total += e[1];
+      let r = Math.random() * total, kind = 'soldier';
+      for (const e of w) { r -= e[1]; if (r <= 0) { kind = e[0]; break; } }
       const p = getPlayer();
       if (!p) return;
-      // View diagonal is ~566px; spawn further so enemies are seen before they reach combat range
       let x, y, tries = 0;
       do {
         x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++;
-      } while (Math.hypot(x - p.x, y - p.y) < 900 && tries < 40);
-      state.units.push(makeEnemy(kind, x, y));
-      if (kind === 'yesking') playClip('yesking');   // boss entrance theme
+      } while (Math.hypot(x - p.x, y - p.y) < 760 && tries < 40);
+      const u = makeEnemy(kind, x, y);
+      // free-play HP creep after the 30-min mark
+      if (state.finalBossDefeated) { const m = 1 + (minutes - 30) * 0.06; u.hp *= m; u.maxHp *= m; }
+      state.units.push(u);
     }
 
-    function startNextWave() {
-      state.wave += 1;
-      state.wavePending = generateWave(state.wave);
-      // YESKING boss every 5th wave, on every map
-      if (state.wave % 5 === 0) state.wavePending.push('yesking');
-      state.waveSpawnTimer = 0.5;
-      // remove dead enemies from units list to keep array clean
-      state.units = state.units.filter(u => u.isPlayer || (u.category === 'enemy' && u.alive));
-      // show wave banner
-      document.getElementById('wave-num').textContent = state.wave;
-      const banner = document.getElementById('wave-banner');
-      banner.classList.remove('hidden');
-      state.waveBannerTimer = 2.5;
-      // clear any active bullets (especially RPG missiles from dead enemies)
-      state.bullets = [];
+    function spawnBoss(kind) {
+      const p = getPlayer();
+      if (!p) return;
+      let x, y, tries = 0;
+      do {
+        x = rand(120, state.map.width - 120); y = rand(120, state.map.height - 120); tries++;
+      } while (Math.hypot(x - p.x, y - p.y) < 700 && tries < 40);
+      state.units.push(makeEnemy(kind, x, y));
+      playClip('yesking');
+      if (kind === 'yesking') showWaveBanner('⚠ YESKING INCOMING ⚠');
+    }
+
+    // XP gems
+    function dropGem(x, y, value) {
+      state.gems.push({ x, y, value, vx: rand(-50, 50), vy: rand(-50, 50), life: 25, collected: false });
+    }
+    function updateGems(dt) {
+      const p = getPlayer();
+      if (!p) { return; }
+      const magnet = (p.upgrades && p.upgrades.magnet) ? 200 : 130;
+      for (const g of state.gems) {
+        g.life -= dt;
+        const d = Math.hypot(p.x - g.x, p.y - g.y);
+        if (d < magnet) {
+          const a = Math.atan2(p.y - g.y, p.x - g.x);
+          const pull = 200 * (1 - d / magnet) + 80;
+          g.x += Math.cos(a) * pull * dt;
+          g.y += Math.sin(a) * pull * dt;
+        } else {
+          g.vx *= 0.9; g.vy *= 0.9;
+          g.x += g.vx * dt; g.y += g.vy * dt;
+        }
+        if (d < p.radius + 10) { g.collected = true; gainXp(g.value); }
+      }
+      state.gems = state.gems.filter(g => !g.collected && g.life > 0);
+    }
+    function gainXp(v) {
+      if (state.mode.key !== 'onslaught') return;
+      state.xp += v;
+      while (state.xp >= state.xpToNext) {
+        state.xp -= state.xpToNext;
+        state.level++;
+        state.xpToNext = Math.floor(5 + state.level * 4 + state.level * state.level * 0.6);
+        state.pendingLevelUps++;
+      }
+      if (state.pendingLevelUps > 0 && state.scene === 'playing') startUpgradePick();
     }
 
     function startUpgradePick() {
       state.scene = 'upgrade-pick';
-      document.getElementById('upg-wave').textContent = state.wave;
+      const titleWave = document.getElementById('upg-wave');
+      if (titleWave) titleWave.textContent = state.level;
       const optsContainer = document.getElementById('upgrade-options');
       optsContainer.innerHTML = '';
-      // pick 3 random upgrades not maxed
       const available = Object.entries(UPGRADES).filter(([k, u]) => (state.upgradeMaxes[k] || 0) < u.max);
-      // shuffle
       for (let i = available.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [available[i], available[j]] = [available[j], available[i]];
       }
       const picks = available.slice(0, 3);
       if (picks.length === 0) {
-        // all maxed — skip pick screen
-        startNextWave();
+        // everything maxed — just consume the level-ups
+        state.pendingLevelUps = 0;
         state.scene = 'playing';
         return;
       }
@@ -1707,10 +1913,14 @@
         state.upgradeMaxes[key] = (state.upgradeMaxes[key] || 0) + 1;
       }
       playClip('level_up');
-      document.getElementById('upgrade-pick').classList.add('hidden');
-      state.scene = 'playing';
-      clearAllInput();    // prevent held key from sticking after the click
-      startNextWave();
+      state.pendingLevelUps = Math.max(0, state.pendingLevelUps - 1);
+      if (state.pendingLevelUps > 0) {
+        startUpgradePick();   // stack of level-ups — show the next card screen
+      } else {
+        document.getElementById('upgrade-pick').classList.add('hidden');
+        state.scene = 'playing';
+        clearAllInput();
+      }
     }
 
     function updateParticles(dt) {
@@ -2348,11 +2558,50 @@
           ctx.beginPath(); ctx.moveTo(b.x - Math.cos(v)*10, b.y - Math.sin(v)*10); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
       }
+      // XP gems (under units)
+      for (const g of state.gems) {
+        const a = g.life < 3 ? clamp(g.life / 3, 0.2, 1) : 1;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#22d3ee';
+        ctx.beginPath();
+        ctx.moveTo(g.x, g.y - 5); ctx.lineTo(g.x + 4, g.y); ctx.lineTo(g.x, g.y + 5); ctx.lineTo(g.x - 4, g.y);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#a5f3fc';
+        ctx.beginPath(); ctx.arc(g.x, g.y, 1.5, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
       for (const u of state.units) {
         if (u.category === 'enemy') renderEnemy(u);
         else renderTank(u);
       }
       if (state.mode.key === 'ctf') for (const f of state.flags) renderFlag(f);
+
+      // Chain lightning arcs
+      for (const l of state.lightnings) {
+        ctx.globalAlpha = clamp(l.life / 0.18, 0, 1);
+        ctx.strokeStyle = '#67e8f9'; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(l.x1, l.y1);
+        const segs = 4;
+        for (let s = 1; s < segs; s++) {
+          const t = s / segs;
+          const mx = l.x1 + (l.x2 - l.x1) * t + rand(-8, 8);
+          const my = l.y1 + (l.y2 - l.y1) * t + rand(-8, 8);
+          ctx.lineTo(mx, my);
+        }
+        ctx.lineTo(l.x2, l.y2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      // Stun shockwaves
+      for (const s of state.shockwaves) {
+        ctx.globalAlpha = clamp(s.life / s.maxLife, 0, 0.7);
+        ctx.strokeStyle = '#fde047'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       for (const d of state.decorations) if (FG_DECOR.has(d.type)) drawDecoration(d);
       for (const pt of state.particles) {
         ctx.globalAlpha = clamp(pt.life / pt.maxLife, 0, 1);
@@ -2446,8 +2695,16 @@
       if (state.map) els.mapName.textContent = state.map.name;
       if (state.mode) {
         if (state.mode.key === 'onslaught') {
-          const remaining = state.units.filter(u => u.category === 'enemy' && u.alive).length + state.wavePending.length;
-          els.modeStatus.innerHTML = `<span class="wave-pill">Wave ${state.wave}</span> <span style="color:#94a3b8;font-size:0.8em">(${remaining} left)</span>`;
+          const t = formatTime(state.matchTime);
+          const xpFrac = Math.round(100 * state.xp / state.xpToNext);
+          const phase = state.finalBossDefeated ? '<span style="color:#4ade80">FREE PLAY</span>'
+                      : state.finalBossActive ? '<span style="color:#ef4444">FINAL BOSS</span>'
+                      : `<span class="timer">${t}</span>`;
+          els.modeStatus.innerHTML =
+            `${phase} <span style="color:#94a3b8;font-size:0.7em">/ 30:00</span><br>` +
+            `<span class="wave-pill">LVL ${state.level}</span> ` +
+            `<span style="display:inline-block;width:90px;height:8px;background:rgba(15,23,42,0.7);border:1px solid #475569;border-radius:3px;vertical-align:middle;overflow:hidden;">` +
+            `<span style="display:block;height:100%;width:${xpFrac}%;background:linear-gradient(90deg,#22d3ee,#0891b2);"></span></span>`;
         } else if (state.mode.key === 'tdm') {
           els.modeStatus.innerHTML = `<span class="team-scores"><span class="red">${state.scores.red}</span><span class="sep">·</span><span class="blue">${state.scores.blue}</span> <span style="color:#94a3b8;font-size:0.7em">to ${state.mode.scoreTarget}</span></span>`;
         } else if (state.mode.key === 'ctf') {
@@ -2462,11 +2719,16 @@
       state.tankDef = TANKS[state.selectedTank];
       state.decorations = generateDecorations(state.selectedMap);
       state.units = []; state.bullets = []; state.particles = []; state.smokes = []; state.flags = [];
+      state.gems = []; state.lightnings = []; state.shockwaves = [];
       state.score = 0; state.scores = { red: 0, blue: 0 };
-      state.matchTime = state.mode.timeLimit;
+      state.matchTime = state.mode.isOnslaught ? 0 : state.mode.timeLimit;
       state.shake = 0;
       state.spawnTimer = 1.5;
       state.wave = 0; state.wavePending = []; state.waveSpawnTimer = 0; state.upgradeMaxes = {}; state.waveBannerTimer = 0;
+      // Onslaught XP/boss reset
+      state.xp = 0; state.level = 1; state.xpToNext = 5; state.pendingLevelUps = 0;
+      state.contSpawnTimer = 1.0; state.miniBossTimer = 300;
+      state.finalBossActive = false; state.finalBossDefeated = false;
 
       const playerTeam = state.mode.playerTeam;
       const sp = state.mode.respawn ? randomSpawnPoint(playerTeam) : { x: state.map.width/2, y: state.map.height/2 };
@@ -2482,8 +2744,8 @@
       }
       const enemyTeam = playerTeam === 'red' ? 'blue' : 'red';
       if (state.mode.isOnslaught) {
-        // First wave starts immediately
-        startNextWave();
+        // Continuous spawner (updateOnslaught) handles everything — seed a few enemies to start
+        for (let i = 0; i < 4; i++) spawnContEnemy(0);
       } else {
         const enemyClasses = ['light','medium','medium','mbt','ifv'];
         for (let i = 0; i < state.mode.enemyCount; i++) {
@@ -2518,7 +2780,7 @@
       titleEl.classList.toggle('victory-title', victory);
       titleEl.classList.toggle('defeat-title', !victory);
       let detail = '';
-      if (state.mode.key === 'onslaught') detail = `Wave ${state.wave} · Score ${state.score} · Best ${state.highScore}`;
+      if (state.mode.key === 'onslaught') detail = `Survived ${formatTime(state.matchTime)} · LVL ${state.level} · Score ${state.score} · Best ${state.highScore}`;
       else if (state.mode.key === 'tdm') detail = `Red ${state.scores.red} · Blue ${state.scores.blue}`;
       else if (state.mode.key === 'ctf') detail = `Red captures ${state.scores.red} · Blue captures ${state.scores.blue}`;
       document.getElementById('game-over-detail').textContent = detail;
@@ -2667,8 +2929,10 @@
         updateUnits(dt);
         updateBullets(dt);
         checkBulletHits();
+        updateStatusEffects(dt);
         updateFlags(dt);
         updateOnslaught(dt);
+        updateGems(dt);
         updateSmokes(dt);
         updatePlayerRespawn(dt);
         updateMatchTime(dt);
