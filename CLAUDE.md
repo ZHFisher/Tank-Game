@@ -8,17 +8,14 @@ Top-down browser tank game. **Single self-contained `index.html`** (~2700 lines:
 - **GitHub Pages** serves it at **https://zhfisher.github.io/Tank-Game/**. Every push to `main` auto-deploys in ~30s. **No build = zero build minutes** (we moved off Netlify because it ate the user's class build credits — do NOT reintroduce a build step or a Netlify dependency).
 - **Assets** (`.mp3`, `.webp`, `.png`) live at the **repo root**, plus a `music/` subfolder. Loaded by relative path, so they must sit next to `index.html`.
 
-## Local preview workflow (IMPORTANT)
+## Local preview (STANDALONE — never touch Exercise3)
 
-Tank-Game has **no dev server of its own**. To preview locally:
+Tank-Game is fully self-contained. Preview it WITHOUT any dependency on another project:
 
-1. Copy `index.html` → `../Exercise3/public/game.html`
-2. Copy any **new** asset files → `../Exercise3/public/` (and `music/` files → `../Exercise3/public/music/`)
-3. The Exercise3 Create-React-App dev server (port 3000) serves it at **http://localhost:3000/game.html**
+- **Static server in this folder**: `python -m http.server 8123` (Python is installed) → open `http://localhost:8123/`. Or `npx serve`.
+- **Or just push and test live**: https://zhfisher.github.io/Tank-Game/ (auto-deploys ~30s after a push to `main`).
 
-The Claude Preview MCP drives that server. To navigate the preview, use `window.location.replace('/game.html')` (the preview server caches the project root from session start, so a plain reload may land on the React app at `/`).
-
-**Mirroring is only for local preview. Deploy = commit + push in this repo.** Always mirror after editing so the preview matches, but the source of truth is `Tank-Game/index.html`.
+**Hard rule: do NOT mirror game files into `../Exercise3`.** Exercise3 is finished, graded coursework and must stay 100% tank-game-free (no `game.html`, no game assets, no links). It was de-mirrored on purpose. The source of truth is `Tank-Game/index.html`; deploy = commit + push in this repo.
 
 ## Architecture (all inside index.html)
 
@@ -70,3 +67,4 @@ SFX volume, Music volume (sliders), Skip-track button, Enemy-Death-Pitch (Troll/
 ## Change log (append after each major fix: what changed + what not to repeat)
 
 - **Onslaught redesign** → continuous XP-pickup leveling, time-scaled spawns, 5-min YESKING, 30-min final boss + free play; added burn/chain-lightning/ricochet/stun-grenade upgrades. Lesson: gate XP/level logic to `mode.key === 'onslaught'`; guard `onEnemyKilled` against double-kill (burn + bullet same frame) with an `if (!enemy.alive) return`.
+- **De-mirrored from Exercise3** → Exercise3 is graded coursework and must stay tank-game-free. Removed all mirrored game files (`game.html`, audio, `music/`, sprites) and any references from that repo. Preview is now standalone (static server here or the live Pages URL). **Never copy game files into Exercise3 again.**
