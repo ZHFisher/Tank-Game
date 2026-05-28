@@ -186,6 +186,14 @@
             <button class="pitch-btn" id="pitch-up-btn">Chipmunk &#9650;</button>
           </div>
         </div>
+        <div class="volume-row">
+          <div class="volume-row__label"><span>Music Pitch <span id="music-pitch-val">1.00x</span></span></div>
+          <div class="pitch-buttons">
+            <button class="pitch-btn" id="music-pitch-down-btn">Troll &#9660;</button>
+            <button class="pitch-btn" id="music-pitch-reset-btn">Reset</button>
+            <button class="pitch-btn" id="music-pitch-up-btn">Chipmunk &#9650;</button>
+          </div>
+        </div>
       </div>
       <div class="btn-row">
         <button class="deploy-btn" id="resume-button">Resume</button>
@@ -966,6 +974,16 @@
     };
     let currentMusic = null;
     let currentMusicSrc = null;
+    let musicPitch = parseFloat(localStorage.getItem('tb-music-pitch') || '1');
+    if (isNaN(musicPitch)) musicPitch = 1;
+    function applyMusicPitch() {
+      if (!currentMusic) return;
+      // preservesPitch=false makes playbackRate shift the pitch (chipmunk/troll)
+      currentMusic.preservesPitch = false;
+      currentMusic.mozPreservesPitch = false;
+      currentMusic.webkitPreservesPitch = false;
+      currentMusic.playbackRate = musicPitch;
+    }
     function startMapMusic(mapKey, excludeCurrent) {
       stopMapMusic();
       const list = MAP_MUSIC[mapKey];
@@ -979,6 +997,7 @@
       currentMusic = new Audio(choice);
       currentMusic.loop = true;
       currentMusic.volume = MUSIC_REF * musicMult;
+      applyMusicPitch();
       currentMusic.play().catch(()=>{});
     }
     function stopMapMusic() {
@@ -2450,6 +2469,20 @@
     document.getElementById('pitch-up-btn').addEventListener('click', () => setDeathPitch(deathPitch * 1.2));
     document.getElementById('pitch-down-btn').addEventListener('click', () => setDeathPitch(deathPitch / 1.2));
     document.getElementById('pitch-reset-btn').addEventListener('click', () => setDeathPitch(1));
+
+    // Background music pitch controls
+    const musicPitchVal = document.getElementById('music-pitch-val');
+    function refreshMusicPitchLabel() { musicPitchVal.textContent = musicPitch.toFixed(2) + 'x'; }
+    function setMusicPitch(v) {
+      musicPitch = clamp(v, 0.4, 2.6);
+      localStorage.setItem('tb-music-pitch', musicPitch);
+      refreshMusicPitchLabel();
+      applyMusicPitch();   // live update on the currently playing track
+    }
+    refreshMusicPitchLabel();
+    document.getElementById('music-pitch-up-btn').addEventListener('click', () => setMusicPitch(musicPitch * 1.15));
+    document.getElementById('music-pitch-down-btn').addEventListener('click', () => setMusicPitch(musicPitch / 1.15));
+    document.getElementById('music-pitch-reset-btn').addEventListener('click', () => setMusicPitch(1));
     document.getElementById('quit-button').addEventListener('click', () => {
       state.scene = 'menu';
       stopMapMusic();
