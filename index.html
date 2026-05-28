@@ -219,6 +219,10 @@
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
     const VIEW_W = canvas.width, VIEW_H = canvas.height;
+
+    // Boss sprite
+    const yeskingImg = new Image();
+    yeskingImg.src = 'yesking.webp';
     const rand = (a, b) => a + Math.random() * (b - a);
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -247,7 +251,7 @@
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
       rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 3,
-      pistol: 5, smg: 3, laser: 60, heavy_mg: 14,
+      pistol: 5, smg: 3, laser: 60, heavy_mg: 14, boss_orb: 12,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -332,6 +336,11 @@
         name:'Mega Tank', hp:900, speed:35, radius:24,
         weapon:'mega_volley', weaponReload:3.6, range:480,
         color:'#db2777', accent:'#500724', bounty:100,
+      },
+      yesking: {
+        name:'YESKING', hp:1800, speed:24, radius:42,
+        isBoss:true, weapon:'boss_orb', fireInterval:1.4, spinSpeed:0.9,
+        color:'#7f1d1d', accent:'#450a0a', bounty:500,
       },
     };
 
@@ -646,13 +655,16 @@
     }
     function makeEnemy(kind, x, y) {
       const def = ENEMIES[kind];
+      // boss HP scales with how deep you are
+      let hp = def.hp;
+      if (def.isBoss) hp = def.hp + Math.max(0, state.wave - 5) * 300;
       return {
         category:'enemy',
         enemyKind:kind,
         isPlayer:false, team:'blue',
         x, y,
         angle:0, turretAngle:0,
-        hp: def.hp, maxHp: def.hp,
+        hp, maxHp: hp,
         speed: def.speed,
         primaryCooldown: rand(0.4, 1.5),
         meleeCooldown: 0,
@@ -660,6 +672,10 @@
         radius: def.radius, hitFlash:0,
         alive:true, stun:0, invuln:0,
         bounty: def.bounty,
+        // boss state
+        spinAngle: 0,
+        fireTimer: def.fireInterval || 1.4,
+        firePattern: 0,
       };
     }
 
@@ -672,7 +688,7 @@
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
                        rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
-                       pistol:130, smg:140, laser:780, heavy_mg:580 };
+                       pistol:130, smg:140, laser:780, heavy_mg:580, boss_orb:110 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -686,6 +702,7 @@
               weapon==='mega_volley' ? 7 :
               weapon==='pistol' ? 5 :        // enemy bullets get to actually reach you
               weapon==='smg' ? 4 :
+              weapon==='boss_orb' ? 9 :
               weapon==='laser' ? 1.4 : 3,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
@@ -695,6 +712,7 @@
                 weapon==='mega_volley' ? 5 :
                 weapon==='pistol' ? 3 :
                 weapon==='smg' ? 2.5 :
+                weapon==='boss_orb' ? 8 :
                 weapon==='laser' ? 4 : 3,
         homingTarget: null,
         piercesLeft: 0,
@@ -940,6 +958,7 @@
       death_npc2:   'death_npc2.mp3',
       death_female: 'death_female.mp3',
       level_up:     'level_up.mp3',
+      yesking:      'yesking.mp3',
     };
     // per-file playback options
     // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
@@ -957,6 +976,7 @@
       death_npc2:   { volume: 0.75, variance: 0.12 },
       death_female: { volume: 0.75, variance: 0.12 },
       level_up:     { volume: 0.3 },
+      yesking:      { volume: 0.85 },
     };
     // Random pool of soldier death cries
     const DEATH_POOL = ['allahu', 'death_npc1', 'death_npc2', 'death_female'];
@@ -1277,6 +1297,27 @@
       const d = Math.hypot(dx, dy) || 1;
       const ang = Math.atan2(dy, dx);
 
+      // BOSS: spin + radial bullet patterns 4 -> 5 -> 6 -> 8 -> reset
+      if (def.isBoss) {
+        enemy.spinAngle += (def.spinSpeed || 0.9) * dt;
+        // slow creep toward player so it can't be perfectly kited forever
+        enemy.x += Math.cos(ang) * enemy.speed * dt;
+        enemy.y += Math.sin(ang) * enemy.speed * dt;
+        resolveWallCollision(enemy);
+        enemy.fireTimer -= dt;
+        if (enemy.fireTimer <= 0) {
+          const counts = [4, 5, 6, 8];
+          const n = counts[enemy.firePattern % counts.length];
+          for (let i = 0; i < n; i++) {
+            const a = enemy.spinAngle + (i / n) * Math.PI * 2;
+            fireWeapon(enemy, 'boss_orb', a);
+          }
+          enemy.firePattern++;
+          enemy.fireTimer = def.fireInterval;
+        }
+        return;
+      }
+
       // All Onslaught enemies are now ranged. Each keeps a preferred distance and fires a visible projectile.
       const OPTIMAL = { soldier:240, rusher:170, rpg:360, humvee:260, super:340, mega:380 };
       const optimal = OPTIMAL[enemy.enemyKind] || 320;
@@ -1569,11 +1610,14 @@
         x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++;
       } while (Math.hypot(x - p.x, y - p.y) < 900 && tries < 40);
       state.units.push(makeEnemy(kind, x, y));
+      if (kind === 'yesking') playClip('yesking');   // boss entrance theme
     }
 
     function startNextWave() {
       state.wave += 1;
       state.wavePending = generateWave(state.wave);
+      // YESKING boss every 5th wave, on every map
+      if (state.wave % 5 === 0) state.wavePending.push('yesking');
       state.waveSpawnTimer = 0.5;
       // remove dead enemies from units list to keep array clean
       state.units = state.units.filter(u => u.isPlayer || (u.category === 'enemy' && u.alive));
@@ -1853,6 +1897,41 @@
       const flash = u.hitFlash > 0;
       const stunned = u.stun > 0;
       const ang = u.angle;
+
+      // BOSS — spinning meme sprite with menacing aura
+      if (def.isBoss) {
+        // pulsing crimson aura
+        const pulse = def.radius + 8 + Math.sin(performance.now() / 200) * 4;
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.3)';
+        ctx.beginPath(); ctx.arc(u.x, u.y, pulse, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.beginPath(); ctx.ellipse(u.x + 6, u.y + 8, def.radius * 1.1, def.radius * 0.5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.save();
+        ctx.translate(u.x, u.y);
+        ctx.rotate(u.spinAngle);
+        const sz = def.radius * 2;
+        if (yeskingImg.complete && yeskingImg.naturalWidth) {
+          if (flash) ctx.filter = 'brightness(2.5)';
+          ctx.drawImage(yeskingImg, -sz/2, -sz/2, sz, sz);
+          ctx.filter = 'none';
+        } else {
+          ctx.fillStyle = flash ? '#fef3c7' : def.color;
+          ctx.beginPath(); ctx.arc(0, 0, def.radius, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+        // boss outline ring
+        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(u.x, u.y, def.radius, 0, Math.PI*2); ctx.stroke();
+        // floating HP bar
+        if (u.hp < u.maxHp) {
+          const w = def.radius * 2.2, h = 6;
+          const frac = clamp(u.hp / u.maxHp, 0, 1);
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(u.x - w/2, u.y - def.radius - 14, w, h);
+          ctx.fillStyle = '#dc2626'; ctx.fillRect(u.x - w/2, u.y - def.radius - 14, w * frac, h);
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(u.x - w/2, u.y - def.radius - 14, w, h);
+        }
+        return;
+      }
 
       // visibility ring — always-on coloured halo so they pop against any biome
       const ringColor = u.enemyKind === 'mega' ? 'rgba(244, 114, 182, 0.5)' :
@@ -2175,6 +2254,16 @@
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(-8, -0.6, 16, 1.2);
           ctx.restore();
+        } else if (b.weapon === 'boss_orb') {
+          // big glowing red boss orb
+          ctx.fillStyle = 'rgba(220, 38, 38, 0.35)';
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius + 4, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#dc2626';
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.5, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.stroke();
         } else { // player mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
@@ -2219,7 +2308,8 @@
         // color by enemy type
         let color = '#ef4444';
         if (u.category === 'enemy') {
-          if (u.enemyKind === 'super') color = '#a78bfa';
+          if (u.enemyKind === 'yesking') color = '#ef4444';
+          else if (u.enemyKind === 'super') color = '#a78bfa';
           else if (u.enemyKind === 'mega') color = '#f472b6';
           else if (u.enemyKind === 'humvee') color = '#fb923c';
           else if (u.enemyKind === 'rpg') color = '#dc2626';
