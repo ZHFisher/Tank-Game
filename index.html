@@ -220,9 +220,11 @@
     const ctx = canvas.getContext('2d');
     const VIEW_W = canvas.width, VIEW_H = canvas.height;
 
-    // Boss sprite
+    // Sprites
     const yeskingImg = new Image();
     yeskingImg.src = 'yesking.webp';
+    const monkeyImg = new Image();
+    monkeyImg.src = 'monkey.png';
     const rand = (a, b) => a + Math.random() * (b - a);
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -251,7 +253,7 @@
     const WEAPON_DAMAGE = {
       cannon: 100, autocannon: 35, mg: 14, rocket: 60,
       rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 3,
-      pistol: 5, smg: 3, laser: 60, heavy_mg: 14, boss_orb: 12,
+      pistol: 5, smg: 3, laser: 60, heavy_mg: 14, boss_orb: 12, watermelon: 15,
       melee_light: 15, melee_heavy: 18,
     };
     function damageFor(weapon, target, owner) {
@@ -321,6 +323,11 @@
         name:'RPG Trooper', hp:40, speed:45, radius:10,
         weapon:'rpg', weaponReload:6, range:520, projSpeed:90,
         color:'#a16207', accent:'#451a03', bounty:15,
+      },
+      monkey: {
+        name:'Watermelon Monkey', hp:80, speed:70, radius:18,
+        isImage:true, weapon:'watermelon', weaponReload:2.2, range:420,
+        color:'#78350f', accent:'#451a03', bounty:18,
       },
       humvee: {
         name:'Humvee', hp:120, speed:120, radius:14,
@@ -600,6 +607,7 @@
       const tables = {
         soldier: [3, 4, 6, 5, 8, 9, 8, 10, 11, 12],
         rusher:  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        monkey:  [0, 0, 1, 2, 2, 3, 3, 4, 4, 5],
         rpg:     [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
         humvee:  [0, 0, 0, 1, 1, 1, 2, 2, 3, 3],
         super:   [0, 0, 0, 0, 1, 1, 1, 1, 2, 2],
@@ -688,7 +696,7 @@
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
                        rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
-                       pistol:130, smg:140, laser:780, heavy_mg:580, boss_orb:110 };
+                       pistol:130, smg:140, laser:780, heavy_mg:580, boss_orb:110, watermelon:200 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -703,6 +711,7 @@
               weapon==='pistol' ? 5 :        // enemy bullets get to actually reach you
               weapon==='smg' ? 4 :
               weapon==='boss_orb' ? 9 :
+              weapon==='watermelon' ? 5 :
               weapon==='laser' ? 1.4 : 3,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
@@ -713,6 +722,7 @@
                 weapon==='pistol' ? 3 :
                 weapon==='smg' ? 2.5 :
                 weapon==='boss_orb' ? 8 :
+                weapon==='watermelon' ? 9 :
                 weapon==='laser' ? 4 : 3,
         homingTarget: null,
         piercesLeft: 0,
@@ -959,6 +969,11 @@
       death_female: 'death_female.mp3',
       level_up:     'level_up.mp3',
       yesking:      'yesking.mp3',
+      monkey1:      'monkey1.mp3',
+      monkey2:      'monkey2.mp3',
+      monkey3:      'monkey3.mp3',
+      monkey4:      'monkey4.mp3',
+      monkey5:      'monkey5.mp3',
     };
     // per-file playback options
     // For full-auto weapons (mg, heavy_mg) we chop to one single shot's worth from the front of the file
@@ -977,12 +992,26 @@
       death_female: { volume: 0.75, variance: 0.12 },
       level_up:     { volume: 0.3 },
       yesking:      { volume: 0.85 },
+      monkey1:      { volume: 0.7, variance: 0.12 },
+      monkey2:      { volume: 0.7, variance: 0.12 },
+      monkey3:      { volume: 0.7, variance: 0.12 },
+      monkey4:      { volume: 0.7, variance: 0.12 },
+      monkey5:      { volume: 0.7, variance: 0.12 },
     };
     // Random pool of soldier death cries
     const DEATH_POOL = ['allahu', 'death_npc1', 'death_npc2', 'death_female'];
     function playRandomDeath() {
       const key = DEATH_POOL[Math.floor(Math.random() * DEATH_POOL.length)];
       playClip(key);
+    }
+    // Random monkey screech (throttled so a horde of monkeys doesn't deafen you)
+    const MONKEY_POOL = ['monkey1', 'monkey2', 'monkey3', 'monkey4', 'monkey5'];
+    let lastMonkeyScreech = 0;
+    function playRandomMonkey() {
+      const now = performance.now();
+      if (now - lastMonkeyScreech < 220) return;
+      lastMonkeyScreech = now;
+      playClip(MONKEY_POOL[Math.floor(Math.random() * MONKEY_POOL.length)]);
     }
 
     // ============================================================
@@ -1082,6 +1111,8 @@
     }
 
     function playWeaponSound(weapon) {
+      // watermelon throw = random monkey screech
+      if (weapon === 'watermelon') { playRandomMonkey(); return; }
       // try real clip first, fall back to synth
       let key = null;
       switch (weapon) {
@@ -1164,6 +1195,8 @@
         spawnParticles(mx, my, '#67e8f9', 10, 220);
       } else if (weapon === 'heavy_mg') {
         spawnParticles(mx, my, '#fbbf24', 3, 140);
+      } else if (weapon === 'watermelon') {
+        spawnParticles(mx, my, '#15803d', 6, 160);
       } else if (weapon === 'autocannon') {
         spawnParticles(mx, my, '#fbbf24', 3, 120);
       } else if (weapon === 'mg' || weapon === 'humvee_mg') {
@@ -1319,7 +1352,7 @@
       }
 
       // All Onslaught enemies are now ranged. Each keeps a preferred distance and fires a visible projectile.
-      const OPTIMAL = { soldier:240, rusher:170, rpg:360, humvee:260, super:340, mega:380 };
+      const OPTIMAL = { soldier:240, rusher:170, monkey:300, rpg:360, humvee:260, super:340, mega:380 };
       const optimal = OPTIMAL[enemy.enemyKind] || 320;
       if (d > optimal + 60) {
         enemy.x += Math.cos(ang) * enemy.speed * dt;
@@ -1534,6 +1567,8 @@
       // Death sound for foot soldiers — random pick from allahu / npc / female pool
       if (enemy.enemyKind === 'soldier' || enemy.enemyKind === 'rusher') {
         playRandomDeath();
+      } else if (enemy.enemyKind === 'monkey') {
+        playRandomMonkey();
       }
     }
 
@@ -1933,6 +1968,32 @@
         return;
       }
 
+      // Image-sprite enemies (e.g. the monkey) — drawn upright, no spin
+      if (def.isImage) {
+        ctx.fillStyle = 'rgba(120, 53, 15, 0.4)';
+        ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 5, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 5, 0, Math.PI*2); ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.ellipse(u.x + 3, u.y + 5, def.radius, def.radius * 0.45, 0, 0, Math.PI*2); ctx.fill();
+        const sz = def.radius * 2;
+        if (monkeyImg.complete && monkeyImg.naturalWidth) {
+          if (flash) ctx.filter = 'brightness(2.5)';
+          ctx.drawImage(monkeyImg, u.x - sz/2, u.y - sz/2, sz, sz);
+          ctx.filter = 'none';
+        } else {
+          ctx.fillStyle = flash ? '#fef3c7' : def.color;
+          ctx.beginPath(); ctx.arc(u.x, u.y, def.radius, 0, Math.PI*2); ctx.fill();
+        }
+        if (u.hp < u.maxHp) {
+          const w = def.radius * 2, h = 4;
+          const frac = clamp(u.hp / u.maxHp, 0, 1);
+          ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(u.x - w/2, u.y - def.radius - 8, w, h);
+          ctx.fillStyle = '#15803d'; ctx.fillRect(u.x - w/2, u.y - def.radius - 8, w * frac, h);
+        }
+        return;
+      }
+
       // visibility ring — always-on coloured halo so they pop against any biome
       const ringColor = u.enemyKind === 'mega' ? 'rgba(244, 114, 182, 0.5)' :
                         u.enemyKind === 'super' ? 'rgba(167, 139, 250, 0.5)' :
@@ -2264,6 +2325,23 @@
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius * 0.5, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.stroke();
+        } else if (b.weapon === 'watermelon') {
+          // tumbling watermelon
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(performance.now() / 200 + (b.x + b.y) * 0.01);
+          ctx.fillStyle = '#15803d';
+          ctx.beginPath(); ctx.arc(0, 0, b.radius, 0, Math.PI*2); ctx.fill();
+          ctx.strokeStyle = '#166534'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, b.radius * 0.7, -0.5, 0.5); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, 0, b.radius * 0.7, Math.PI - 0.5, Math.PI + 0.5); ctx.stroke();
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath(); ctx.arc(0, 0, b.radius * 0.55, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#111';
+          ctx.fillRect(-2, -2.5, 1.4, 2); ctx.fillRect(1.5, 1, 1.4, 2); ctx.fillRect(-3, 1.5, 1.4, 2);
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(0, 0, b.radius, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
         } else { // player mg
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
@@ -2312,6 +2390,7 @@
           else if (u.enemyKind === 'super') color = '#a78bfa';
           else if (u.enemyKind === 'mega') color = '#f472b6';
           else if (u.enemyKind === 'humvee') color = '#fb923c';
+          else if (u.enemyKind === 'monkey') color = '#a16207';
           else if (u.enemyKind === 'rpg') color = '#dc2626';
         } else color = '#06b6d4';
         ctx.save();
