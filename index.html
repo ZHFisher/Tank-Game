@@ -100,6 +100,14 @@
     }
     .next-track-btn:hover { background: rgba(6, 182, 212, 0.3); color: #f8fafc; transform: translateY(-1px); }
     .next-track-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .pitch-buttons { display: flex; gap: 0.4rem; }
+    .pitch-btn {
+      flex: 1; background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid #06b6d4;
+      border-radius: 4px; padding: 0.4rem 0.3rem; font: inherit; font-size: 0.66rem;
+      letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+    .pitch-btn:hover { background: rgba(6, 182, 212, 0.3); color: #f8fafc; transform: translateY(-1px); }
     .volume-row input[type="range"] {
       -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
       background: linear-gradient(90deg, #1e293b, #334155); border: 1px solid #475569; border-radius: 4px; outline: none; cursor: pointer;
@@ -169,6 +177,14 @@
             <button class="next-track-btn" id="next-track-btn" title="Pick a different track">Skip &#9654;</button>
           </div>
           <input type="range" id="music-slider" min="0" max="100" value="100" />
+        </div>
+        <div class="volume-row">
+          <div class="volume-row__label"><span>Enemy Death Pitch <span id="death-pitch-val">1.00x</span></span></div>
+          <div class="pitch-buttons">
+            <button class="pitch-btn" id="pitch-down-btn">Troll &#9660;</button>
+            <button class="pitch-btn" id="pitch-reset-btn">Reset</button>
+            <button class="pitch-btn" id="pitch-up-btn">Chipmunk &#9650;</button>
+          </div>
         </div>
       </div>
       <div class="btn-row">
@@ -982,6 +998,11 @@
     const lastPlayed = {};
     const THROTTLE = {}; // no throttling — single-shot slices sync naturally to fire rate
 
+    // Enemy death-sound pitch (chipmunk <-> troll). Persisted.
+    const DEATH_KEYS = new Set(['allahu', 'death_npc1', 'death_npc2', 'death_female']);
+    let deathPitch = parseFloat(localStorage.getItem('tb-death-pitch') || '1');
+    if (isNaN(deathPitch)) deathPitch = 1;
+
     async function loadSound(key, path) {
       if (!audioCtx) return;
       try {
@@ -1005,11 +1026,15 @@
       const g = audioCtx.createGain();
       const opt = SOUND_OPTS[key] || {};
       let vol = opt.volume != null ? opt.volume : 0.6;
+      let rate = 1;
       if (opt.variance) {
-        // randomize pitch ±15% and volume ±variance for natural-sounding rapid fire
-        src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.18;
+        // randomize pitch ±9% and volume ±variance for natural-sounding rapid fire
+        rate = 1 + (Math.random() - 0.5) * 0.18;
         vol *= 1 + (Math.random() - 0.5) * opt.variance * 2;
       }
+      // apply death-pitch multiplier to enemy death cries (chipmunk / troll)
+      if (DEATH_KEYS.has(key)) rate *= deathPitch;
+      src.playbackRate.value = rate;
       g.gain.value = vol;
       src.connect(g).connect(masterGain);
       if (opt.duration) src.start(0, 0, opt.duration);
@@ -2410,6 +2435,21 @@
       if (!list || list.length === 0) return;
       startMapMusic(state.selectedMap, true);
     });
+
+    // Enemy death-sound pitch controls
+    const deathPitchVal = document.getElementById('death-pitch-val');
+    function refreshDeathPitchLabel() { deathPitchVal.textContent = deathPitch.toFixed(2) + 'x'; }
+    function setDeathPitch(v) {
+      deathPitch = clamp(v, 0.4, 2.6);
+      localStorage.setItem('tb-death-pitch', deathPitch);
+      refreshDeathPitchLabel();
+      ensureAudio();
+      playRandomDeath();   // preview the new pitch
+    }
+    refreshDeathPitchLabel();
+    document.getElementById('pitch-up-btn').addEventListener('click', () => setDeathPitch(deathPitch * 1.2));
+    document.getElementById('pitch-down-btn').addEventListener('click', () => setDeathPitch(deathPitch / 1.2));
+    document.getElementById('pitch-reset-btn').addEventListener('click', () => setDeathPitch(1));
     document.getElementById('quit-button').addEventListener('click', () => {
       state.scene = 'menu';
       stopMapMusic();
