@@ -251,15 +251,22 @@
     };
     // Flat per-shot damage for everything else (Onslaught enemies)
     const WEAPON_DAMAGE = {
-      cannon: 100, autocannon: 35, mg: 14, rocket: 60,
+      cannon: 100, autocannon: 35, mg: 8, rocket: 60,
       rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 3,
-      pistol: 5, smg: 3, laser: 60, heavy_mg: 14, boss_orb: 12, watermelon: 15,
+      pistol: 5, smg: 5, laser: 60, heavy_mg: 20, boss_orb: 12, watermelon: 15,
       melee_light: 15, melee_heavy: 18,
     };
+    // Class armor vs non-tank (Onslaught) fire. Enemy damage is flat, so without
+    // this the Scout (200 HP) is the tankiest class and the MBT the squishiest —
+    // inverted class identity. Multiplier on damage TAKEN: lower = tougher.
+    const ARMOR_MULT = { light: 1.25, medium: 1.0, mbt: 0.6, ifv: 0.95, laser: 0.9 };
     function damageFor(weapon, target, owner) {
       let base;
       if (target.tankKey && DAMAGE_TANK[weapon]) base = DAMAGE_TANK[weapon][target.tankKey] || 25;
-      else base = WEAPON_DAMAGE[weapon] || 20;
+      else {
+        base = WEAPON_DAMAGE[weapon] || 20;
+        if (target.tankKey) base *= ARMOR_MULT[target.tankKey] || 1;
+      }
       if (owner && owner.isPlayer && owner.upgrades) base *= owner.upgrades.damageMult || 1;
       return base;
     }
@@ -678,9 +685,14 @@
     }
     function makeEnemy(kind, x, y) {
       const def = ENEMIES[kind];
-      // boss HP scales with how deep you are
+      // Mini-boss HP scales with match time (continuous Onslaught never increments
+      // state.wave, so the old wave-based scaling was dead code). Final boss spawns
+      // at a fixed time, so it keeps its flat HP.
       let hp = def.hp;
-      if (def.isBoss) hp = def.hp + Math.max(0, state.wave - 5) * 300;
+      if (def.isBoss && !def.isFinal) {
+        const minutes = (state.matchTime || 0) / 60;
+        hp = Math.round(def.hp * (1 + Math.max(0, minutes - 5) * 0.12));
+      }
       return {
         category:'enemy',
         enemyKind:kind,
@@ -695,6 +707,9 @@
         radius: def.radius, hitFlash:0,
         alive:true, stun:0, invuln:0,
         bounty: def.bounty,
+        // per-enemy strafe direction so the swarm doesn't all orbit the same way
+        strafeDir: Math.random() < 0.5 ? 1 : -1,
+        strafeTimer: rand(2, 5),
         // boss state
         spinAngle: 0,
         fireTimer: def.fireInterval || 1.4,
@@ -853,6 +868,99 @@
     function isUnitInSmoke(u) {
       for (const s of state.smokes) if (Math.hypot(s.x-u.x, s.y-u.y) < s.radius) return true;
       return false;
+    }
+
+    // ============================================================
+    // Pathing — coarse flow field (BFS from the player) + steering
+    // ============================================================
+    // Enemies follow the field whenever they have no line of sight to the player,
+    // so they route around walls instead of grinding against them.
+    const FLOW = { cell: 40, cols: 0, rows: 0, blocked: null, dist: null, timer: 0 };
+    function buildFlowGrid() {
+      const cs = FLOW.cell;
+      FLOW.cols = Math.ceil(state.map.width / cs);
+      FLOW.rows = Math.ceil(state.map.height / cs);
+      const blocked = new Uint8Array(FLOW.cols * FLOW.rows);
+      const pad = 16; // inflate walls so units don't snag on corners
+      for (const w of state.map.walls) {
+        const x0 = Math.max(0, Math.floor((w.x - pad) / cs)), x1 = Math.min(FLOW.cols - 1, Math.floor((w.x + w.w + pad) / cs));
+        const y0 = Math.max(0, Math.floor((w.y - pad) / cs)), y1 = Math.min(FLOW.rows - 1, Math.floor((w.y + w.h + pad) / cs));
+        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) blocked[gy * FLOW.cols + gx] = 1;
+      }
+      FLOW.blocked = blocked;
+      FLOW.dist = new Int32Array(FLOW.cols * FLOW.rows).fill(-1);
+      FLOW.timer = 0;
+    }
+    function rebuildFlowField() {
+      const p = getPlayer();
+      if (!p || !FLOW.blocked) return;
+      const { cols, rows, cell, blocked, dist } = FLOW;
+      dist.fill(-1);
+      let px = clamp(Math.floor(p.x / cell), 0, cols - 1);
+      let py = clamp(Math.floor(p.y / cell), 0, rows - 1);
+      // player hugging a wall can sit inside the inflated padding — hop to a nearby open cell
+      if (blocked[py * cols + px]) {
+        outer: for (let r = 1; r <= 3; r++)
+          for (let gy = py - r; gy <= py + r; gy++)
+            for (let gx = px - r; gx <= px + r; gx++) {
+              if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+              if (!blocked[gy * cols + gx]) { px = gx; py = gy; break outer; }
+            }
+      }
+      const queue = [py * cols + px];
+      dist[py * cols + px] = 0;
+      for (let qi = 0; qi < queue.length; qi++) {
+        const idx = queue[qi];
+        const gx = idx % cols, d = dist[idx];
+        if (gx > 0          && dist[idx - 1]    < 0 && !blocked[idx - 1])    { dist[idx - 1]    = d + 1; queue.push(idx - 1); }
+        if (gx < cols - 1   && dist[idx + 1]    < 0 && !blocked[idx + 1])    { dist[idx + 1]    = d + 1; queue.push(idx + 1); }
+        if (idx - cols >= 0 && dist[idx - cols] < 0 && !blocked[idx - cols]) { dist[idx - cols] = d + 1; queue.push(idx - cols); }
+        if (idx + cols < dist.length && dist[idx + cols] < 0 && !blocked[idx + cols]) { dist[idx + cols] = d + 1; queue.push(idx + cols); }
+      }
+    }
+    // Direction of steepest descent toward the player, or null (go direct / unreachable).
+    function flowDirFrom(x, y) {
+      const { cols, rows, cell, blocked, dist } = FLOW;
+      if (!dist) return null;
+      const gx = clamp(Math.floor(x / cell), 0, cols - 1);
+      const gy = clamp(Math.floor(y / cell), 0, rows - 1);
+      if (dist[gy * cols + gx] === 0) return null; // already in the player's cell
+      let best = -1, bx = 0, by = 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = gx + ox, ny = gy + oy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        const nd = dist[ny * cols + nx];
+        if (nd < 0) continue;
+        // don't cut a diagonal through a blocked corner
+        if (ox && oy && (blocked[gy * cols + nx] || blocked[ny * cols + gx])) continue;
+        if (best < 0 || nd < best) { best = nd; bx = nx; by = ny; }
+      }
+      if (best < 0) return null;
+      const tx = (bx + 0.5) * cell, ty = (by + 0.5) * cell;
+      const d = Math.hypot(tx - x, ty - y) || 1;
+      return { x: (tx - x) / d, y: (ty - y) / d };
+    }
+    // Cheap whisker steering — probe ahead, slide around obstacles. Used by bot
+    // tanks (their goals aren't always the player, so the flow field doesn't apply)
+    // and as a fallback for enemies holding their distance band.
+    function pointBlocked(px, py, pad) {
+      if (px < pad || py < pad || px > state.map.width - pad || py > state.map.height - pad) return true;
+      for (const w of state.map.walls) {
+        if (px > w.x - pad && px < w.x + w.w + pad && py > w.y - pad && py < w.y + w.h + pad) return true;
+      }
+      return false;
+    }
+    function steerClearOfWalls(u, moveAng) {
+      const look = u.radius + 36;
+      const clear = a => !pointBlocked(u.x + Math.cos(a) * look, u.y + Math.sin(a) * look, u.radius * 0.8);
+      if (clear(moveAng)) return moveAng;
+      for (let step = 1; step <= 4; step++) {
+        const off = step * 0.45;
+        if (clear(moveAng + off)) return moveAng + off;
+        if (clear(moveAng - off)) return moveAng - off;
+      }
+      return moveAng + Math.PI; // boxed in — back straight out
     }
 
     // ============================================================
@@ -1348,6 +1456,7 @@
       const shouldStrafe = goal.target && d < 280;
       let moveAng = ang;
       if (shouldStrafe) moveAng = ang + Math.PI/2 * (((bot.x + bot.y) | 0) % 2 === 0 ? 1 : -1);
+      moveAng = steerClearOfWalls(bot, moveAng);
       bot.x += Math.cos(moveAng) * bot.speed * dt * (shouldStrafe ? 0.5 : 1);
       bot.y += Math.sin(moveAng) * bot.speed * dt * (shouldStrafe ? 0.5 : 1);
       bot.angle = moveAng;
@@ -1381,9 +1490,15 @@
       // BOSS: spin + radial bullet patterns 4 -> 5 -> 6 -> 8 -> reset
       if (def.isBoss) {
         enemy.spinAngle += (def.spinSpeed || 0.9) * dt;
-        // slow creep toward player so it can't be perfectly kited forever
-        enemy.x += Math.cos(ang) * enemy.speed * dt;
-        enemy.y += Math.sin(ang) * enemy.speed * dt;
+        // slow creep toward player so it can't be perfectly kited forever —
+        // follow the flow field around walls when one is in the way
+        let mvAng = ang;
+        if (!hasLineOfSight(enemy, p)) {
+          const dir = flowDirFrom(enemy.x, enemy.y);
+          if (dir) mvAng = Math.atan2(dir.y, dir.x);
+        }
+        enemy.x += Math.cos(mvAng) * enemy.speed * dt;
+        enemy.y += Math.sin(mvAng) * enemy.speed * dt;
         resolveWallCollision(enemy);
         enemy.fireTimer -= dt;
         if (enemy.fireTimer <= 0) {
@@ -1407,22 +1522,29 @@
         return;
       }
 
-      // All Onslaught enemies are now ranged. Each keeps a preferred distance and fires a visible projectile.
+      // All Onslaught enemies are ranged. With line of sight they hold a preferred
+      // distance band; without it they follow the flow field around walls.
+      const canSee = hasLineOfSight(enemy, p);
       const OPTIMAL = { soldier:240, rusher:170, monkey:300, rpg:360, humvee:260, super:340, mega:380 };
       const optimal = OPTIMAL[enemy.enemyKind] || 320;
-      if (d > optimal + 60) {
-        enemy.x += Math.cos(ang) * enemy.speed * dt;
-        enemy.y += Math.sin(ang) * enemy.speed * dt;
-        enemy.angle = ang;
+      enemy.strafeTimer -= dt;
+      if (enemy.strafeTimer <= 0) { enemy.strafeDir = -enemy.strafeDir; enemy.strafeTimer = rand(2, 5); }
+      let mvAng = ang, mvSpeed = enemy.speed;
+      if (!canSee) {
+        const dir = flowDirFrom(enemy.x, enemy.y);
+        mvAng = dir ? Math.atan2(dir.y, dir.x) : steerClearOfWalls(enemy, ang);
+      } else if (d > optimal + 60) {
+        mvAng = steerClearOfWalls(enemy, ang);
       } else if (d < optimal - 60) {
-        enemy.x -= Math.cos(ang) * enemy.speed * dt * 0.7;
-        enemy.y -= Math.sin(ang) * enemy.speed * dt * 0.7;
-        enemy.angle = ang;
+        mvAng = steerClearOfWalls(enemy, ang + Math.PI);
+        mvSpeed *= 0.7;
       } else {
-        enemy.x += Math.cos(ang + Math.PI/2) * enemy.speed * dt * 0.4;
-        enemy.y += Math.sin(ang + Math.PI/2) * enemy.speed * dt * 0.4;
-        enemy.angle = ang;
+        mvAng = steerClearOfWalls(enemy, ang + enemy.strafeDir * Math.PI / 2);
+        mvSpeed *= 0.4;
       }
+      enemy.x += Math.cos(mvAng) * mvSpeed * dt;
+      enemy.y += Math.sin(mvAng) * mvSpeed * dt;
+      enemy.angle = mvAng;
       resolveWallCollision(enemy);
       enemy.turretAngle = ang;
 
@@ -1438,8 +1560,7 @@
       }
 
       {
-        // Only fire if we actually have a clear line to the player — no more dumping shots into walls
-        const canSee = hasLineOfSight(enemy, p);
+        // Only fire with a clear line to the player (canSee from the movement step)
         // Burst-fire for humvee only now (rusher went single-shot)
         if (def.weapon === 'humvee_mg') {
           if (enemy.burstLeft > 0) {
@@ -1490,6 +1611,33 @@
         else if (u.category === 'enemy') updateEnemy(u, dt);
         else updateBotTank(u, dt);
       }
+      separateEnemies();
+    }
+
+    // Keep the swarm from stacking into a single blob — pairwise push-apart.
+    // Bosses act as immovable; small enemies get shoved out of their way.
+    function separateEnemies() {
+      const mobs = [];
+      for (const u of state.units) if (u.alive && u.category === 'enemy') mobs.push(u);
+      for (let i = 0; i < mobs.length; i++) {
+        const a = mobs[i];
+        for (let j = i + 1; j < mobs.length; j++) {
+          const b = mobs[j];
+          const min = a.radius + b.radius + 4;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          if (Math.abs(dx) > min || Math.abs(dy) > min) continue;
+          const d = Math.hypot(dx, dy);
+          if (d < 0.001 || d >= min) continue;
+          const push = (min - d) / 2;
+          const ux = dx / d, uy = dy / d;
+          const aBoss = ENEMIES[a.enemyKind].isBoss, bBoss = ENEMIES[b.enemyKind].isBoss;
+          if (!aBoss) { const k = bBoss ? 2 : 1; a.x -= ux * push * k; a.y -= uy * push * k; }
+          if (!bBoss) { const k = aBoss ? 2 : 1; b.x += ux * push * k; b.y += uy * push * k; }
+        }
+      }
+      // re-resolve walls in case a push shoved someone into one (stunned enemies
+      // skip their own movement step, so they'd otherwise stay clipped)
+      for (const m of mobs) resolveWallCollision(m);
     }
 
     function updateBullets(dt) {
@@ -1755,6 +1903,10 @@
       if (state.mode.key !== 'onslaught') return;
       state.matchTime += dt;
       const minutes = state.matchTime / 60;
+
+      // refresh the pathing flow field a few times a second (BFS over a 60×40 grid — cheap)
+      FLOW.timer -= dt;
+      if (FLOW.timer <= 0) { rebuildFlowField(); FLOW.timer = 0.3; }
 
       // continuous spawn — cadence tightens and batch grows with time
       state.contSpawnTimer -= dt;
@@ -2718,6 +2870,7 @@
       state.map = MAPS[state.selectedMap];
       state.tankDef = TANKS[state.selectedTank];
       state.decorations = generateDecorations(state.selectedMap);
+      buildFlowGrid();
       state.units = []; state.bullets = []; state.particles = []; state.smokes = []; state.flags = [];
       state.gems = []; state.lightnings = []; state.shockwaves = [];
       state.score = 0; state.scores = { red: 0, blue: 0 };

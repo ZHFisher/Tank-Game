@@ -26,7 +26,8 @@ Tank-Game is fully self-contained. Preview it WITHOUT any dependency on another 
 - `MAPS` — 5 maps (`desert, snow, tropical, forest, fulda`), each 2400×1600 with camera follow.
 - `MODES` — `onslaught` (continuous XP survival, the flagship), `tdm`, `ctf`.
 - `UPGRADES` — roguelike pool picked on level-up.
-- **Damage**: `DAMAGE_TANK[weapon][tankClass]` for tank-vs-tank; `WEAPON_DAMAGE[weapon]` flat for everything else. Bullet `speeds` dict + `life`/`radius` ternaries are in `makeBullet`.
+- **Damage**: `DAMAGE_TANK[weapon][tankClass]` for tank-vs-tank; `WEAPON_DAMAGE[weapon]` flat for everything else, **then × `ARMOR_MULT[tankClass]` when an enemy weapon hits the player** (mbt 0.6 … light 1.25 — keeps MBT the tanky class in Onslaught despite its low raw HP). Bullet `speeds` dict + `life`/`radius` ternaries are in `makeBullet`.
+- **Pathing**: `FLOW` flow field (40px grid, walls inflated 16px, BFS from player ~3×/s in `updateOnslaught`). Enemies use it whenever they have no LOS (`flowDirFrom`), else hold their `OPTIMAL` distance band with `steerClearOfWalls` whisker steering. `separateEnemies()` (called from `updateUnits`) un-stacks the swarm; bosses are immovable in that pass. TDM/CTF bots use whisker steering only (their goals aren't always the player). `buildFlowGrid()` runs in `buildMatch`.
 - **Audio**: Web-Audio synth fallback (`playMG/playCannon/playRocket`) + real MP3 clips decoded to AudioBuffers (`SOUND_FILES`, `SOUND_OPTS`, `playClip`). Music uses an HTML5 `Audio` element.
 
 ## Onslaught mode (current design)
@@ -50,7 +51,7 @@ Vampire-Survivors / Disfigure style:
 | ifv | Spearhead | 105 | 136 | autocannon 0.18s | rocket (homing+stun) 4.5s | Overdrive (fire×2 3s), 14s |
 | laser | Phoenix | 130 | 130 | laser 0.45s (pierces 3) | MG | Overload (fire×2 3s), 14s |
 
-**Onslaught enemies** (`ENEMIES`): soldier (30hp, pistol), rusher (25hp, fast, smg single-shot), monkey (80hp, throws watermelons, sprite `monkey.png`, 5 random screeches), rpg (40hp, slow homing missile that fizzles if you kill the trooper), humvee (120hp, MG burst), super (350hp, purple, heavy cannon), mega (900hp, pink, 3-shot volley), **yesking** mini-boss (1800hp, spinning `yesking.webp` sprite, radial 4/5/6/8 orb patterns, every 5:00), **finalboss** "YESKING ASCENDED" (14000hp, 80px, triple bullet-hell pattern, at 30:00).
+**Onslaught enemies** (`ENEMIES`): soldier (30hp, pistol), rusher (25hp, fast, smg single-shot), monkey (80hp, throws watermelons, sprite `monkey.png`, 5 random screeches), rpg (40hp, slow homing missile that fizzles if you kill the trooper), humvee (120hp, MG burst), super (350hp, purple, heavy cannon), mega (900hp, pink, 3-shot volley), **yesking** mini-boss (1800hp base, scales +12%/min past 5:00 → ~3960 at 15:00, spinning `yesking.webp` sprite, radial 4/5/6/8 orb patterns, every 5:00), **finalboss** "YESKING ASCENDED" (14000hp flat, 80px, triple bullet-hell pattern, at 30:00).
 
 **Modes** (`MODES`): onslaught (continuous XP survival — flagship), tdm (5v5 bots to 50 kills), ctf (3v3 bots, 3 captures).
 
@@ -60,8 +61,10 @@ Vampire-Survivors / Disfigure style:
 
 ## Known issues / TODO (not yet fixed)
 
-1. **Player cannon/autocannon/mg/rocket aren't in `WEAPON_DAMAGE`.** Against non-tank Onslaught enemies (which have `enemyKind`, not `tankKey`), `damageFor` falls back to the default **20**. So the cannon does only 20 to soldiers/monkeys/etc., while `laser` (60) and `heavy_mg` (14) use their real table values. Net effect: cannon underperforms vs the main enemy roster; laser overperforms. Fix = add cannon/autocannon/mg/rocket to `WEAPON_DAMAGE` with intended values.
-2. **Boss HP no longer scales.** `makeEnemy` scales boss HP by `state.wave - 5`, but the continuous Onslaught redesign never increments `state.wave` (it's time-based now). So bosses stay at base HP (yesking 1800, finalboss 14000). Free-play *enemy* HP creep (time-based, in `spawnContEnemy`) works fine. Fix = scale boss HP off `state.matchTime` instead of `state.wave`.
+1. **`hasLineOfSight` samples every ~20px**, so a sightline that clips a wall *corner* between samples counts as clear. Harmless (the resulting shot fizzles on the wall), but it's why enemies occasionally fire from just around a corner.
+2. **`melee_light`/`melee_heavy` in `WEAPON_DAMAGE` are dead entries** — melee was removed; nothing fires them. Safe to delete next pass.
+
+_Resolved earlier issues: player cannon/autocannon/mg/rocket are in `WEAPON_DAMAGE` now (was: default-20 fallback); boss HP scaling was rewired from the dead `state.wave` to `state.matchTime` (2026-06-10)._
 
 ## How to do common changes
 
@@ -93,6 +96,15 @@ SFX volume, Music volume (sliders), Skip-track button, Enemy-Death-Pitch (Troll/
 ## Change log (newest first — append after each major change: what changed + lesson)
 
 _Append a tight bullet here whenever you ship something. Keep the "lesson" so future sessions don't repeat mistakes._
+
+### 2026-06-10 (AI pathing + balance pass)
+- **Flow-field pathing for Onslaught enemies.** 40px BFS grid from the player, rebuilt every 0.3s in `updateOnslaught` (~2400 cells, cheap). Enemies (bosses too) follow it whenever they lose LOS, so they route *around* walls instead of grinding into them; with LOS they keep the old distance-band behavior, now with `steerClearOfWalls` whisker steering so retreat/strafe doesn't wall-hump. TDM/CTF bots got whisker steering too. Lessons: (a) initialize `FLOW.dist` to **-1**, not 0 — a zero-filled grid reads as "everywhere is the player's cell"; (b) when sampling 8 neighbors for descent direction, reject diagonals whose two orthogonal cells are blocked or units cut corners through walls; (c) the player hugging a wall sits inside the 16px inflated padding — hop the BFS seed to the nearest open cell.
+- **Swarm separation + strafe variety.** `separateEnemies()` pairwise push-apart (bosses immovable) ends the single-blob stack; each enemy gets a random `strafeDir` that flips every 2–5s so the band orbit isn't synchronized. Re-resolve wall collision after the push pass — stunned enemies skip their own movement step and would stay clipped.
+- **Class armor vs swarm fire (`ARMOR_MULT`).** Enemy damage is flat (`WEAPON_DAMAGE`), so the Scout (200 HP) was the tankiest class and the MBT (125 HP) nearly the squishiest — inverted class identity. Multiplier on damage *taken* from non-tank weapons: light 1.25 / medium 1.0 / mbt 0.6 / ifv 0.95 / laser 0.9 → effective swarm HP: mbt 208, light 160, medium 150, laser 144, ifv 111. `DAMAGE_TANK` (TDM/CTF) untouched.
+- **Weapon rebalance vs enemies:** `mg` 14→8 (at 0.08s reload it was 175 DPS — out-damaging every primary as a free secondary; now ~100), `heavy_mg` 14→20 (MBT's identity weapon, ~111 DPS), `smg` 3→5 (rusher closes to 170px, should sting).
+- **Boss HP scaling fixed** (known issue #2): yesking now scales off `state.matchTime` — ×(1 + 0.12/min past 5:00) → 1800 / 3960 / 6120 at 5/15/25 min. Final boss stays flat 14000 (it spawns at a fixed time). Confirmed known issue #1 (cannon missing from `WEAPON_DAMAGE`) was already fixed in code; cleared both from Known Issues.
+- **Verified headless** by driving the update functions manually with fixed dt (1800+ frames, no errors; wall-flank test: a soldier spawned across a wall walked around it and re-acquired LOS). Lesson: the preview browser throttles `requestAnimationFrame` when hidden — `state.matchTime` stays 0 and nothing moves; don't mistake that for a bug, just call the update functions directly via eval.
+- Added `.claude/launch.json` (python http.server 8123) matching the documented preview command.
 
 ### 2026-05-28
 - **CLAUDE.md became the save file.** Added full current-contents inventory + known-issues section + this dated logbook so a fresh session can continue cold. Logged 2 latent bugs (cannon not in WEAPON_DAMAGE; boss HP scales off dead `state.wave`).
