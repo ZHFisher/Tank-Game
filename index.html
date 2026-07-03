@@ -79,6 +79,8 @@
     .back-link:hover { color: #e2e8f0; border-color: #06b6d4; background-color: rgba(6, 182, 212, 0.1); }
     .victory-title { color: #4ade80 !important; text-shadow: 0 2px 14px rgba(74, 222, 128, 0.5) !important; }
     .defeat-title { color: #ef4444 !important; text-shadow: 0 2px 14px rgba(239, 68, 68, 0.5) !important; }
+    .run-stats { color: #94a3b8; font-size: 0.82rem; letter-spacing: 1px; margin: -0.4rem 0 0.9rem 0; text-align: center; line-height: 1.8; max-width: 640px; }
+    .run-stats .icon-chip { color: #facc15; margin: 0 0.3rem; white-space: nowrap; }
     .respawn-banner, .wave-banner { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); background: rgba(15, 23, 42, 0.88); border: 1px solid #facc15; padding: 1rem 2.5rem; border-radius: 8px; color: #f8fafc; letter-spacing: 4px; text-transform: uppercase; font-weight: bold; pointer-events: none; z-index: 5; }
 
     .volume-controls { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 0.8rem; margin: 0.7rem 0 1.2rem 0; }
@@ -161,6 +163,7 @@
       <h2 style="color:#facc15;text-shadow:0 2px 14px rgba(250, 204, 21, 0.5);letter-spacing:4px;">⭐ CONGRATS PATRIOT YOU WELFARED UP ⭐</h2>
       <p class="lead">Level <span id="upg-wave">1</span> · Pick one upgrade</p>
       <div class="upgrades-grid" id="upgrade-options"></div>
+      <button class="deploy-btn alt-btn" id="reroll-btn">&#8635; Reroll</button>
     </div>
 
     <div class="overlay hidden" id="pause-menu">
@@ -204,6 +207,7 @@
     <div class="overlay hidden" id="game-over">
       <h2 id="game-over-title" class="defeat-title">Knocked Out</h2>
       <p class="lead" id="game-over-detail">Final Score 0</p>
+      <div class="run-stats" id="run-stats"></div>
       <button class="deploy-btn" id="restart-button">Back to Menu</button>
     </div>
   </div>
@@ -254,7 +258,7 @@
       cannon: 100, autocannon: 35, mg: 8, rocket: 60,
       rpg: 25, heavy_cannon: 20, mega_volley: 18, humvee_mg: 3,
       pistol: 5, smg: 5, laser: 60, heavy_mg: 20, boss_orb: 12, watermelon: 15,
-      melee_light: 15, melee_heavy: 18,
+      sniper: 22,
     };
     // Class armor vs non-tank (Onslaught) fire. Enemy damage is flat, so without
     // this the Scout (200 HP) is the tankiest class and the MBT the squishiest —
@@ -331,6 +335,12 @@
         weapon:'rpg', weaponReload:6, range:520, projSpeed:90,
         color:'#a16207', accent:'#451a03', bounty:15,
       },
+      sniper: {
+        // Telegraphed shot: 0.9s red laser-sight line, then a fast tracer.
+        name:'Marksman', hp:35, speed:40, radius:9,
+        weapon:'sniper', weaponReload:4.5, range:450,
+        color:'#0e7490', accent:'#083344', bounty:16,
+      },
       monkey: {
         name:'Watermelon Monkey', hp:80, speed:70, radius:18,
         isImage:true, weapon:'watermelon', weaponReload:2.2, range:420,
@@ -377,7 +387,7 @@
                   apply:(p)=>{ p.upgrades.abilityMult = (p.upgrades.abilityMult||1)*0.8; } },
       regen:    { name:'Auto-Repair',      icon:'+', desc:'+1 HP/sec regen.', max:5,
                   apply:(p)=>{ p.upgrades.regenRate = (p.upgrades.regenRate||0)+1; } },
-      thorns:   { name:'Reactive Plating', icon:'※', desc:'Melee attackers take 15 dmg.', max:3,
+      thorns:   { name:'Reactive Plating', icon:'※', desc:'Shooters take 15 dmg when their rounds hit you.', max:3,
                   apply:(p)=>{ p.upgrades.thorns = (p.upgrades.thorns||0)+15; } },
       pierce:   { name:'AP Rounds',        icon:'>', desc:'Cannon shots pierce +1 target.', max:3,
                   apply:(p)=>{ p.upgrades.pierce = (p.upgrades.pierce||0)+1; } },
@@ -391,6 +401,14 @@
                   apply:(p)=>{ p.upgrades.ricochet = (p.upgrades.ricochet||0)+1; } },
       stun:     { name:'Stun Grenades',    icon:'✸', desc:'Periodic stun pulse around you (faster per stack).', max:4,
                   apply:(p)=>{ p.upgrades.stunGrenade = true; p.upgrades.grenadeInterval = Math.max(2.5, (p.upgrades.grenadeInterval||9)-1.6); p.grenadeTimer = p.upgrades.grenadeInterval; } },
+      crit:     { name:'Sabot Core',       icon:'✦', desc:'+10% crit chance — crits deal double damage.', max:4,
+                  apply:(p)=>{ p.upgrades.critChance = (p.upgrades.critChance||0)+0.10; } },
+      vampire:  { name:'Nano Salvage',     icon:'♥', desc:'Heal 3% of all damage you deal.', max:3,
+                  apply:(p)=>{ p.upgrades.lifesteal = (p.upgrades.lifesteal||0)+0.03; } },
+      explosive:{ name:'HE Shells',        icon:'💥', desc:'Primary hits explode — 25% splash per stack (80px).', max:3,
+                  apply:(p)=>{ p.upgrades.explosive = (p.upgrades.explosive||0)+1; } },
+      magnet:   { name:'Magnet Coil',      icon:'🧲', desc:'+80 XP gem pickup radius.', max:3,
+                  apply:(p)=>{ p.upgrades.magnet = (p.upgrades.magnet||0)+1; } },
     };
 
     const TEAM_COLORS = {
@@ -655,7 +673,7 @@
       scene:'menu',
       selectedMode:'onslaught', selectedTank:'medium', selectedMap:'desert',
       mode:null, map:null, decorations:[], tankDef:null,
-      units:[], bullets:[], particles:[], smokes:[], flags:[], gems:[], lightnings:[], shockwaves:[],
+      units:[], bullets:[], particles:[], smokes:[], flags:[], gems:[], lightnings:[], shockwaves:[], floaters:[],
       camera:{x:0,y:0}, score:0, scores:{red:0,blue:0},
       spawnTimer:2, matchTime:0,
       highScore: parseInt(localStorage.getItem('tankbuster-high')||'0',10), shake:0,
@@ -663,6 +681,7 @@
       wave:0, wavePending:[], waveSpawnTimer:0, waveBannerTimer:0, upgradeMaxes:{},
       xp:0, level:1, xpToNext:5, pendingLevelUps:0,
       contSpawnTimer:0, miniBossTimer:300, finalBossActive:false, finalBossDefeated:false,
+      rerollLeft:0, stats:{ kills:0, dmg:0 },
     };
     function getPlayer() { return state.units.find(u => u.isPlayer); }
 
@@ -681,6 +700,9 @@
         radius: def.radius, hitFlash:0,
         alive:true, respawnTimer:0, hasFlag:null,
         upgrades: isPlayer ? {} : null,
+        // firing/movement FX state
+        recoil:0, muzzleFlash:0, muzzleWeapon:null,
+        treadOffset:0, lastX:x, lastY:y,
       };
     }
     function makeEnemy(kind, x, y) {
@@ -714,6 +736,8 @@
         spinAngle: 0,
         fireTimer: def.fireInterval || 1.4,
         firePattern: 0,
+        // sniper telegraph
+        aimTimer: 0,
       };
     }
 
@@ -726,7 +750,8 @@
     function makeBullet(x, y, angle, owner, weapon, speedOverride) {
       const speeds = { cannon:320, autocannon:460, mg:600, rocket:230,
                        rpg:90, heavy_cannon:160, mega_volley:150, humvee_mg:240,
-                       pistol:130, smg:140, laser:780, heavy_mg:580, boss_orb:110, watermelon:200 };
+                       pistol:130, smg:140, laser:780, heavy_mg:580, boss_orb:110, watermelon:200,
+                       sniper:520 };
       const spd = speedOverride || speeds[weapon] || 360;
       return {
         x, y, vx:Math.cos(angle)*spd, vy:Math.sin(angle)*spd,
@@ -742,6 +767,7 @@
               weapon==='smg' ? 4 :
               weapon==='boss_orb' ? 9 :
               weapon==='watermelon' ? 5 :
+              weapon==='sniper' ? 2 :
               weapon==='laser' ? 1.4 : 3,
         radius: weapon==='cannon'||weapon==='heavy_cannon' ? 4 :
                 weapon==='mg'||weapon==='humvee_mg' ? 2.5 :
@@ -753,6 +779,7 @@
                 weapon==='smg' ? 2.5 :
                 weapon==='boss_orb' ? 8 :
                 weapon==='watermelon' ? 9 :
+                weapon==='sniper' ? 3 :
                 weapon==='laser' ? 4 : 3,
         homingTarget: null,
         piercesLeft: 0,
@@ -766,6 +793,20 @@
       for (let i = 0; i < count; i++) state.particles.push({
         x, y, vx:rand(-s,s), vy:rand(-s,s), life:rand(0.25,0.7), maxLife:0.7, color, radius:rand(1.2,3),
       });
+    }
+    // Floating damage numbers — capped so a swarm melt doesn't flood the canvas
+    function addFloater(x, y, text, color, size) {
+      if (state.floaters.length > 70) return;
+      state.floaters.push({ x, y, vy: -36, life: 0.75, maxLife: 0.75, text, color, size: size || 12 });
+    }
+    function updateFloaters(dt) {
+      for (const f of state.floaters) { f.y += f.vy * dt; f.vy *= 0.92; f.life -= dt; }
+      state.floaters = state.floaters.filter(f => f.life > 0);
+    }
+    function playerLifesteal(p, dmg) {
+      if (p && p.isPlayer && p.alive && p.upgrades && p.upgrades.lifesteal) {
+        p.hp = Math.min(p.maxHp, p.hp + dmg * p.upgrades.lifesteal);
+      }
     }
     function makeSmoke(x, y) { return { x, y, life:5, maxLife:5, radius:90 }; }
     function makeFlag(team) {
@@ -849,19 +890,31 @@
         }
       }
     }
+    // Exact segment-vs-rect test (slab method) — no more corner-clipping gaps
+    // between sample points, and cheaper than stepping every 20px.
+    function segHitsRect(x1, y1, x2, y2, w) {
+      const dx = x2 - x1, dy = y2 - y1;
+      let t0 = 0, t1 = 1;
+      if (Math.abs(dx) < 1e-9) { if (x1 <= w.x || x1 >= w.x + w.w) return false; }
+      else {
+        let ta = (w.x - x1) / dx, tb = (w.x + w.w - x1) / dx;
+        if (ta > tb) { const t = ta; ta = tb; tb = t; }
+        t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+        if (t0 >= t1) return false;
+      }
+      if (Math.abs(dy) < 1e-9) { if (y1 <= w.y || y1 >= w.y + w.h) return false; }
+      else {
+        let ta = (w.y - y1) / dy, tb = (w.y + w.h - y1) / dy;
+        if (ta > tb) { const t = ta; ta = tb; tb = t; }
+        t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+        if (t0 >= t1) return false;
+      }
+      return true;
+    }
     // Line of sight — true if no wall sits between `from` and `to`.
-    // Steps along the line in ~20px increments; cheap enough to call per enemy per frame.
     function hasLineOfSight(from, to) {
-      const dx = to.x - from.x, dy = to.y - from.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 1) return true;
-      const steps = Math.max(2, Math.ceil(dist / 20));
-      for (let i = 1; i < steps; i++) {
-        const t = i / steps;
-        const px = from.x + dx * t, py = from.y + dy * t;
-        for (const w of state.map.walls) {
-          if (px > w.x && px < w.x + w.w && py > w.y && py < w.y + w.h) return false;
-        }
+      for (const w of state.map.walls) {
+        if (segHitsRect(from.x, from.y, to.x, to.y, w)) return false;
       }
       return true;
     }
@@ -1246,9 +1299,26 @@
       return true;
     }
 
+    // Soft "fwip" for watermelon throws — monkeys only screech once, on death
+    function playFwip() {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime, dur = 0.14;
+      const nb = audioCtx.createBufferSource();
+      nb.buffer = createNoiseBuffer(dur);
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.Q.value = 2.5;
+      bp.frequency.setValueAtTime(500, t);
+      bp.frequency.exponentialRampToValueAtTime(1400, t + dur);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.18, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      nb.connect(bp).connect(g).connect(masterGain);
+      nb.start(t); nb.stop(t + dur + 0.02);
+    }
+
     function playWeaponSound(weapon) {
-      // watermelon throw = random monkey screech
-      if (weapon === 'watermelon') { playRandomMonkey(); return; }
+      // watermelon throw = quiet fwip (screech-on-every-throw got old fast)
+      if (weapon === 'watermelon') { playFwip(); return; }
       // try real clip first, fall back to synth
       let key = null;
       switch (weapon) {
@@ -1260,7 +1330,8 @@
         case 'rpg':           key = 'ifv_rocket'; break;
         case 'laser':         key = 'laser'; break;
         case 'heavy_mg':
-        case 'humvee_mg':     key = 'heavy_mg'; break;
+        case 'humvee_mg':
+        case 'sniper':        key = 'heavy_mg'; break;
         case 'mg':
         case 'pistol':
         case 'smg':           key = 'mg'; break;
@@ -1273,6 +1344,7 @@
         case 'mega_volley': playCannon(true); break;
         case 'autocannon':
         case 'humvee_mg':
+        case 'sniper':
         case 'heavy_mg': playMG(true); break;
         case 'mg':
         case 'pistol':
@@ -1320,6 +1392,15 @@
         angle += (Math.random() - 0.5) * 0.05;
       }
       const b = makeBullet(mx, my, angle, unit, weapon);
+      // barrel recoil + muzzle flash — scaled by how heavy the shot is
+      const kick = weapon === 'cannon' || weapon === 'heavy_cannon' || weapon === 'mega_volley' ? 1 :
+                   weapon === 'rocket' || weapon === 'rpg' ? 0.8 :
+                   weapon === 'laser' ? 0.7 :
+                   weapon === 'autocannon' ? 0.45 :
+                   weapon === 'heavy_mg' ? 0.3 : 0.2;
+      unit.recoil = Math.min(1, Math.max(unit.recoil || 0, kick));
+      unit.muzzleFlash = 0.07;
+      unit.muzzleWeapon = weapon;
       // ricochet upgrade — player projectile weapons bounce off walls
       if (unit.isPlayer && unit.upgrades && unit.upgrades.ricochet &&
           weapon !== 'rocket' && weapon !== 'rpg') {
@@ -1344,6 +1425,8 @@
         spawnParticles(mx, my, '#fbbf24', 1, 80);
       } else if (weapon === 'pistol' || weapon === 'smg') {
         spawnParticles(mx, my, '#fbbf24', 2, 100);
+      } else if (weapon === 'sniper') {
+        spawnParticles(mx, my, '#e0f2fe', 5, 200);
       } else if (weapon === 'rpg') {
         spawnParticles(mx, my, '#94a3b8', 8, 200);
       } else if (weapon === 'heavy_cannon') {
@@ -1508,6 +1591,10 @@
             const a = enemy.spinAngle + (i / n) * Math.PI * 2;
             fireWeapon(enemy, 'boss_orb', a);
           }
+          // veteran YESKING (10:00+) adds an aimed orb so pure kiting stops working
+          if (!def.isFinal && state.matchTime > 600) {
+            fireWeapon(enemy, 'boss_orb', ang);
+          }
           // FINAL BOSS — bullet hell: add a counter-rotating ring + aimed triple at the player
           if (def.isFinal) {
             for (let i = 0; i < n + 4; i++) {
@@ -1525,7 +1612,7 @@
       // All Onslaught enemies are ranged. With line of sight they hold a preferred
       // distance band; without it they follow the flow field around walls.
       const canSee = hasLineOfSight(enemy, p);
-      const OPTIMAL = { soldier:240, rusher:170, monkey:300, rpg:360, humvee:260, super:340, mega:380 };
+      const OPTIMAL = { soldier:240, rusher:170, monkey:300, rpg:360, humvee:260, super:340, mega:380, sniper:380 };
       const optimal = OPTIMAL[enemy.enemyKind] || 320;
       enemy.strafeTimer -= dt;
       if (enemy.strafeTimer <= 0) { enemy.strafeDir = -enemy.strafeDir; enemy.strafeTimer = rand(2, 5); }
@@ -1542,6 +1629,7 @@
         mvAng = steerClearOfWalls(enemy, ang + enemy.strafeDir * Math.PI / 2);
         mvSpeed *= 0.4;
       }
+      if (enemy.aimTimer > 0) mvSpeed = 0;  // sniper stands still while aiming
       enemy.x += Math.cos(mvAng) * mvSpeed * dt;
       enemy.y += Math.sin(mvAng) * mvSpeed * dt;
       enemy.angle = mvAng;
@@ -1583,6 +1671,17 @@
             }
             enemy.primaryCooldown = def.weaponReload + rand(0, 0.3);
           }
+        } else if (def.weapon === 'sniper') {
+          // telegraph: hold the laser-sight for 0.9s, then crack off the shot
+          if (enemy.aimTimer > 0) {
+            enemy.aimTimer -= dt;
+            if (enemy.aimTimer <= 0) {
+              if (canSee && d < def.range + 80) fireWeapon(enemy, 'sniper', ang);
+              enemy.primaryCooldown = def.weaponReload + rand(0, 0.6);
+            }
+          } else if (enemy.primaryCooldown <= 0 && d < def.range && canSee) {
+            enemy.aimTimer = 0.9;
+          }
         } else if (enemy.primaryCooldown <= 0 && d < def.range && canSee) {
           fireWeapon(enemy, def.weapon, ang);
           enemy.primaryCooldown = def.weaponReload + rand(0, 0.4);
@@ -1612,6 +1711,43 @@
         else updateBotTank(u, dt);
       }
       separateEnemies();
+      // FX bookkeeping — recoil/flash decay for everyone; treads + dust for tanks;
+      // upgrade-theme particles for the player. Emission lives HERE (not in render)
+      // so pause freezes it like everything else.
+      for (const u of state.units) {
+        u.recoil = Math.max(0, (u.recoil || 0) - dt * 5);
+        u.muzzleFlash = Math.max(0, (u.muzzleFlash || 0) - dt);
+        if (!u.alive) continue;
+        if (u.category === 'tank') {
+          const mdx = u.x - (u.lastX != null ? u.lastX : u.x);
+          const mdy = u.y - (u.lastY != null ? u.lastY : u.y);
+          const moved = Math.hypot(mdx, mdy);
+          u.treadOffset = (u.treadOffset || 0) + moved;
+          if (moved > 0.4 && Math.random() < 0.3) {
+            const dc = state.map.key === 'desert' ? 'rgba(214, 187, 140, 0.5)' :
+                       state.map.key === 'snow' ? 'rgba(255, 255, 255, 0.55)' :
+                       'rgba(120, 110, 90, 0.45)';
+            state.particles.push({ x: u.x - mdx * 3 + rand(-5, 5), y: u.y - mdy * 3 + rand(-5, 5),
+                                   vx: rand(-12, 12), vy: rand(-12, 12),
+                                   life: rand(0.3, 0.5), maxLife: 0.5, color: dc, radius: rand(1.8, 3.4) });
+          }
+        }
+        if (u.isPlayer && u.upgrades) {
+          const up = u.upgrades;
+          if (up.burnDps && Math.random() < dt * (5 + up.burnDps / 4)) {
+            state.particles.push({ x: u.x - Math.cos(u.angle) * (u.radius + 3) + rand(-3, 3),
+                                   y: u.y - Math.sin(u.angle) * (u.radius + 3) + rand(-3, 3),
+                                   vx: rand(-15, 15), vy: rand(-28, -8),
+                                   life: rand(0.3, 0.55), maxLife: 0.55, color: Math.random() < 0.5 ? '#f97316' : '#fbbf24', radius: rand(1.2, 2.4) });
+          }
+          if (up.chainCount && Math.random() < dt * (2 + up.chainCount)) {
+            state.particles.push({ x: u.x + rand(-u.radius, u.radius), y: u.y + rand(-u.radius, u.radius),
+                                   vx: rand(-40, 40), vy: rand(-40, 40),
+                                   life: 0.2, maxLife: 0.2, color: '#67e8f9', radius: rand(0.8, 1.6) });
+          }
+        }
+        u.lastX = u.x; u.lastY = u.y;
+      }
     }
 
     // Keep the swarm from stacking into a single blob — pairwise push-apart.
@@ -1678,6 +1814,18 @@
             }
             state.particles.push({ x: b.x, y: b.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, maxLife: 0.3, color: b.weapon === 'rpg' ? '#ef4444' : '#fbbf24', radius: rand(1.5, 2.5) });
           }
+        } else if (b.weapon === 'cannon' || b.weapon === 'heavy_cannon' || b.weapon === 'mega_volley') {
+          // faint smoke behind tank shells
+          b.trailTimer = (b.trailTimer || 0) - dt;
+          if (b.trailTimer <= 0) {
+            b.trailTimer = 0.045;
+            state.particles.push({ x: b.x, y: b.y, vx: rand(-8, 8), vy: rand(-8, 8), life: 0.3, maxLife: 0.3, color: 'rgba(200, 200, 200, 0.5)', radius: rand(1.5, 2.6) });
+          }
+        }
+        // Incendiary build — player rounds shed embers in flight
+        if (b.owner && b.owner.isPlayer && b.owner.upgrades && b.owner.upgrades.burnDps &&
+            b.weapon !== 'rocket' && Math.random() < dt * 22) {
+          state.particles.push({ x: b.x, y: b.y, vx: rand(-20, 20), vy: rand(-20, 20), life: 0.25, maxLife: 0.25, color: Math.random() < 0.5 ? '#f97316' : '#fbbf24', radius: rand(1, 2) });
         }
       }
       state.bullets = state.bullets.filter(b => {
@@ -1694,6 +1842,9 @@
           if (b.weapon === 'rocket' || b.weapon === 'rpg') {
             spawnParticles(b.x, b.y, '#fbbf24', 16, 320);
             state.shake = Math.min(state.shake + 4, 9);
+          } else if (b.weapon === 'cannon' || b.weapon === 'heavy_cannon' || b.weapon === 'mega_volley') {
+            spawnParticles(b.x, b.y, '#fdba74', 10, 220);
+            state.shockwaves.push({ x: b.x, y: b.y, r: 0, maxR: 20, life: 0.15, maxLife: 0.15, color: '#fdba74' });
           } else {
             spawnParticles(b.x, b.y, '#94a3b8', 4, 140);
           }
@@ -1711,7 +1862,12 @@
           if (!u.alive || u.team === b.ownerTeam || u.invuln > 0) continue;
           if (b.hitUnits.has(u)) continue;
           if (Math.hypot(b.x - u.x, b.y - u.y) < u.radius + b.radius) {
-            const damage = damageFor(b.weapon, u, b.owner);
+            let damage = damageFor(b.weapon, u, b.owner);
+            let isCrit = false;
+            if (b.owner && b.owner.isPlayer && b.owner.upgrades && b.owner.upgrades.critChance &&
+                Math.random() < b.owner.upgrades.critChance) {
+              damage *= 2; isCrit = true;
+            }
             u.hp -= damage;
             u.hitFlash = 0.12;
             if (b.weapon === 'rocket') {
@@ -1726,13 +1882,37 @@
               state.shake = Math.min(state.shake + 6, 11);
             } else {
               spawnParticles(b.x, b.y, b.weapon==='cannon' || b.weapon==='heavy_cannon' ? (u.team==='blue'?'#06b6d4':'#f97316') : '#fbbf24', b.weapon==='cannon'?14:5);
+              if (b.weapon === 'cannon' || b.weapon === 'heavy_cannon' || b.weapon === 'mega_volley') {
+                state.shockwaves.push({ x: b.x, y: b.y, r: 0, maxR: 24, life: 0.18, maxLife: 0.18,
+                                        color: b.ownerTeam === 'blue' ? '#67e8f9' : '#fdba74' });
+              }
             }
             b.hitUnits.add(u);
-            // player-only on-hit effects: burn + chain lightning
+            // player damage feedback + run stats + lifesteal
+            if (b.owner && b.owner.isPlayer) {
+              state.stats.dmg += damage;
+              playerLifesteal(b.owner, damage);
+              addFloater(u.x, u.y - u.radius - 8, String(Math.round(damage)),
+                         isCrit ? '#fde047' : '#f8fafc', isCrit ? 16 : 12);
+            }
+            // thorns — shooters take reflect damage when their rounds land on the player
+            if (u.isPlayer && u.upgrades && u.upgrades.thorns &&
+                b.owner && b.owner.alive && !b.owner.isPlayer) {
+              b.owner.hp -= u.upgrades.thorns;
+              b.owner.hitFlash = 0.12;
+              if (b.owner.hp <= 0) {
+                if (b.owner.category === 'enemy') onEnemyKilled(b.owner, u);
+                else onUnitKilled(b.owner, u);
+              }
+            }
+            // player-only on-hit effects: burn + chain lightning + HE splash
             if (b.owner && b.owner.isPlayer && b.owner.upgrades) {
               const up = b.owner.upgrades;
               if (up.burnDps) { u.burn = 3; u.burnDps = Math.max(u.burnDps || 0, up.burnDps); }
               if (up.chainCount) applyChainLightning(u, b);
+              if (up.explosive && (b.weapon === 'cannon' || b.weapon === 'autocannon' || b.weapon === 'laser')) {
+                explodeHE(b, u, damage);
+              }
             }
             // pierce: cannon AND laser stay alive while pierces remain
             if ((b.weapon === 'cannon' || b.weapon === 'laser') && b.piercesLeft > 0) {
@@ -1768,11 +1948,35 @@
         const dmg = damageFor(bullet.weapon, best, owner) * 0.5;
         best.hp -= dmg;
         best.hitFlash = 0.12;
+        state.stats.dmg += dmg;
+        playerLifesteal(owner, dmg);
+        addFloater(best.x, best.y - best.radius - 8, String(Math.round(dmg)), '#67e8f9', 11);
         state.lightnings.push({ x1: from.x, y1: from.y, x2: best.x, y2: best.y, life: 0.18 });
         hit.add(best);
         if (best.hp <= 0) { if (best.category === 'enemy') onEnemyKilled(best, owner); else onUnitKilled(best, owner); }
         from = best;
         chains--;
+      }
+    }
+
+    // HE Shells upgrade — primary-weapon hits splash 25% per stack in an 80px radius
+    function explodeHE(b, directHit, baseDamage) {
+      const R = 80;
+      const splash = baseDamage * 0.25 * b.owner.upgrades.explosive;
+      state.shockwaves.push({ x: b.x, y: b.y, r: 0, maxR: R, life: 0.25, maxLife: 0.25, color: '#fb923c' });
+      spawnParticles(b.x, b.y, '#fb923c', 8, 240);
+      for (const e of state.units) {
+        if (!e.alive || e.team === b.ownerTeam || e === directHit || e.invuln > 0) continue;
+        if (Math.hypot(e.x - b.x, e.y - b.y) > R + e.radius) continue;
+        e.hp -= splash;
+        e.hitFlash = 0.12;
+        state.stats.dmg += splash;
+        playerLifesteal(b.owner, splash);
+        addFloater(e.x, e.y - e.radius - 8, String(Math.round(splash)), '#fb923c', 11);
+        if (e.hp <= 0) {
+          if (e.category === 'enemy') onEnemyKilled(e, b.owner);
+          else onUnitKilled(e, b.owner);
+        }
       }
     }
 
@@ -1783,6 +1987,7 @@
         if (u.burn > 0) {
           u.burn -= dt;
           u.hp -= (u.burnDps || 0) * dt;
+          if (u.category === 'enemy') state.stats.dmg += (u.burnDps || 0) * dt;  // burn is player-only
           if (Math.random() < 0.25) spawnParticles(u.x, u.y, '#f97316', 1, 50);
           if (u.hp <= 0) {
             if (u.category === 'enemy') onEnemyKilled(u, getPlayer());
@@ -1799,6 +2004,7 @@
 
     function onUnitKilled(victim, killer) {
       victim.alive = false; victim.respawnTimer = 3;
+      if (killer && killer.isPlayer && !victim.isPlayer) state.stats.kills++;
       if (victim.hasFlag) {
         const f = state.flags.find(f => f.team === victim.hasFlag);
         if (f) { f.x = victim.x; f.y = victim.y; f.carriedBy = null; f.atBase = false; f.droppedTimer = 12; }
@@ -1825,12 +2031,21 @@
       enemy.alive = false;
       const def = ENEMIES[enemy.enemyKind];
       spawnParticles(enemy.x, enemy.y, enemy.enemyKind === 'mega' ? '#f472b6' : (enemy.enemyKind === 'super' ? '#a78bfa' : '#fb923c'), enemy.enemyKind === 'mega' ? 40 : 22, 320);
+      // expanding kill ring — bigger and colour-coded for the heavies
+      const ringC = def.isBoss ? '#dc2626' :
+                    enemy.enemyKind === 'mega' ? '#f472b6' :
+                    enemy.enemyKind === 'super' ? '#a78bfa' : '#fb923c';
+      const killR = def.isFinal ? 140 : def.isBoss ? 90 :
+                    enemy.enemyKind === 'mega' ? 60 :
+                    enemy.enemyKind === 'super' ? 44 : 26;
+      state.shockwaves.push({ x: enemy.x, y: enemy.y, r: 0, maxR: killR, life: 0.3, maxLife: 0.3, color: ringC });
       state.shake = Math.min(state.shake + (enemy.enemyKind === 'mega' ? 9 : 4), 12);
-      if (killer && killer.isPlayer) state.score += def.bounty;
+      // use the per-enemy bounty (elites carry 3×), not the class default
+      if (killer && killer.isPlayer) { state.score += enemy.bounty; state.stats.kills++; }
 
       // Drop XP gem(s) in Onslaught — bigger enemies drop more
       if (state.mode.key === 'onslaught') {
-        const xpVal = Math.max(1, Math.round(def.bounty / 4));
+        const xpVal = Math.max(1, Math.round(enemy.bounty / 4));
         if (def.isBoss) {
           // bosses scatter several gems
           const n = def.isFinal ? 20 : 8;
@@ -1958,6 +2173,7 @@
         ['monkey',  minutes >= 2 ? 2 + minutes * 0.6 : 0],
         ['rpg',     minutes >= 3 ? 1.5 + minutes * 0.5 : 0],
         ['humvee',  minutes >= 4 ? 1 + minutes * 0.4 : 0],
+        ['sniper',  minutes >= 5 ? 1 + minutes * 0.3 : 0],
         ['super',   minutes >= 6 ? minutes * 0.3 : 0],
         ['mega',    minutes >= 9 ? minutes * 0.15 : 0],
       ];
@@ -1971,6 +2187,13 @@
         x = rand(60, state.map.width - 60); y = rand(60, state.map.height - 60); tries++;
       } while (Math.hypot(x - p.x, y - p.y) < 760 && tries < 40);
       const u = makeEnemy(kind, x, y);
+      // Elite variant past 8:00 — gold ring, 3× HP & bounty (so 3× XP), a bit faster
+      if (minutes >= 8 && Math.random() < Math.min(0.22, 0.04 + (minutes - 8) * 0.02)) {
+        u.elite = true;
+        u.hp *= 3; u.maxHp *= 3;
+        u.speed *= 1.12;
+        u.bounty *= 3;
+      }
       // free-play HP creep after the 30-min mark
       if (state.finalBossDefeated) { const m = 1 + (minutes - 30) * 0.06; u.hp *= m; u.maxHp *= m; }
       state.units.push(u);
@@ -1995,7 +2218,7 @@
     function updateGems(dt) {
       const p = getPlayer();
       if (!p) { return; }
-      const magnet = (p.upgrades && p.upgrades.magnet) ? 200 : 130;
+      const magnet = 130 + 80 * ((p.upgrades && p.upgrades.magnet) || 0);
       for (const g of state.gems) {
         g.life -= dt;
         const d = Math.hypot(p.x - g.x, p.y - g.y);
@@ -2026,8 +2249,19 @@
 
     function startUpgradePick() {
       state.scene = 'upgrade-pick';
+      state.rerollLeft = 1;   // one reroll per level-up screen
       const titleWave = document.getElementById('upg-wave');
       if (titleWave) titleWave.textContent = state.level;
+      if (!renderUpgradeCards()) {
+        // everything maxed — just consume the level-ups
+        state.pendingLevelUps = 0;
+        state.scene = 'playing';
+        return;
+      }
+      document.getElementById('upgrade-pick').classList.remove('hidden');
+    }
+
+    function renderUpgradeCards() {
       const optsContainer = document.getElementById('upgrade-options');
       optsContainer.innerHTML = '';
       const available = Object.entries(UPGRADES).filter(([k, u]) => (state.upgradeMaxes[k] || 0) < u.max);
@@ -2036,12 +2270,7 @@
         [available[i], available[j]] = [available[j], available[i]];
       }
       const picks = available.slice(0, 3);
-      if (picks.length === 0) {
-        // everything maxed — just consume the level-ups
-        state.pendingLevelUps = 0;
-        state.scene = 'playing';
-        return;
-      }
+      if (picks.length === 0) return false;
       for (const [key, upg] of picks) {
         const card = document.createElement('div');
         card.className = 'upgrade-card';
@@ -2054,8 +2283,16 @@
         card.addEventListener('click', () => applyUpgradePick(key));
         optsContainer.appendChild(card);
       }
-      document.getElementById('upgrade-pick').classList.remove('hidden');
+      const rb = document.getElementById('reroll-btn');
+      rb.disabled = state.rerollLeft <= 0;
+      rb.textContent = state.rerollLeft > 0 ? '↻ Reroll' : 'Rerolled';
+      return true;
     }
+    document.getElementById('reroll-btn').addEventListener('click', () => {
+      if (state.scene !== 'upgrade-pick' || state.rerollLeft <= 0) return;
+      state.rerollLeft--;
+      renderUpgradeCards();
+    });
 
     function applyUpgradePick(key) {
       const upg = UPGRADES[key];
@@ -2117,6 +2354,67 @@
     // ============================================================
     // Rendering
     // ============================================================
+    // barrel-tip distance per class (where the muzzle flash sits) + flash tints per weapon
+    const BARREL_TIP = { light: 16, medium: 20, mbt: 28, laser: 28, ifv: 22 };
+    const MUZZLE_TINT = {
+      laser:      ['#67e8f9', '#e0f2fe'],
+      autocannon: ['#fde047', '#fff7ed'],
+      mg:         ['#fde047', '#fff7ed'],
+      heavy_mg:   ['#fbbf24', '#fff7ed'],
+      rocket:     ['#fb923c', '#fde047'],
+    };
+
+    // Build-themed FX layered onto the player tank — the tank visually becomes its build:
+    // Incendiary = exhaust flames, Chain = electric arcs, Sabot = gold trim, Nano Salvage = crimson core.
+    // (HE barrel bands + boosted muzzle flash live in the turret block; plasma lives in the laser bolt render.)
+    function renderPlayerUpgradeFx(u, def) {
+      const up = u.upgrades;
+      // fire path — flickering twin exhaust flames out the back
+      if (up.burnDps) {
+        const st = Math.min(5, up.burnDps / 8);
+        ctx.save(); ctx.translate(u.x, u.y); ctx.rotate(u.angle);
+        for (const oy of [-4, 4]) {
+          const len = rand(4, 7 + st * 1.5);
+          ctx.fillStyle = 'rgba(249, 115, 22, 0.85)';
+          ctx.beginPath(); ctx.moveTo(-def.radius + 1, oy - 2); ctx.lineTo(-def.radius - len, oy); ctx.lineTo(-def.radius + 1, oy + 2); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = 'rgba(253, 224, 71, 0.9)';
+          ctx.beginPath(); ctx.moveTo(-def.radius + 1, oy - 1); ctx.lineTo(-def.radius - len * 0.55, oy); ctx.lineTo(-def.radius + 1, oy + 1); ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
+      // electric path — jagged cyan arcs crawling over the hull
+      if (up.chainCount) {
+        ctx.strokeStyle = 'rgba(103, 232, 249, 0.8)'; ctx.lineWidth = 1.2;
+        const n = 1 + up.chainCount;
+        for (let i = 0; i < n; i++) {
+          if (Math.random() < 0.45) continue;   // flicker
+          const a0 = Math.random() * Math.PI * 2;
+          const a1 = a0 + rand(1.2, 3.2);
+          const r = def.radius * 0.95;
+          const x0 = u.x + Math.cos(a0) * r, y0 = u.y + Math.sin(a0) * r;
+          const x1 = u.x + Math.cos(a1) * r, y1 = u.y + Math.sin(a1) * r;
+          ctx.beginPath(); ctx.moveTo(x0, y0);
+          for (let s = 1; s < 3; s++) {
+            const t = s / 3;
+            ctx.lineTo(x0 + (x1 - x0) * t + rand(-4, 4), y0 + (y1 - y0) * t + rand(-4, 4));
+          }
+          ctx.lineTo(x1, y1); ctx.stroke();
+        }
+      }
+      // sabot path — gold trim ring
+      if (up.critChance) {
+        ctx.strokeStyle = `rgba(253, 224, 71, ${Math.min(0.75, 0.3 + up.critChance)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 3, 0, Math.PI * 2); ctx.stroke();
+      }
+      // salvage path — crimson core pulsing on the turret hatch
+      if (up.lifesteal) {
+        const pulse = 2 + Math.sin(performance.now() / 220) * 0.7;
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.9)';
+        ctx.beginPath(); ctx.arc(u.x, u.y, pulse, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
     function renderTank(u) {
       if (!u.alive) return;
       const def = TANKS[u.tankKey];
@@ -2136,7 +2434,8 @@
       if (u.tankKey === 'light') {
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-13, -15, 26, 5); ctx.fillRect(-13, 10, 26, 5);
         ctx.fillStyle = '#1e293b';
-        for (let i = -11; i < 13; i += 3) { ctx.fillRect(i, -15, 1.5, 5); ctx.fillRect(i, 10, 1.5, 5); }
+        { const to = (u.treadOffset || 0) % 3;
+          for (let i = -13 + to; i < 13; i += 3) { ctx.fillRect(i, -15, 1.5, 5); ctx.fillRect(i, 10, 1.5, 5); } }
         ctx.fillStyle = bodyC; ctx.fillRect(-10, -9, 20, 18);
         ctx.strokeStyle = wearC; ctx.lineWidth = 0.7;
         ctx.beginPath(); ctx.moveTo(-2, -9); ctx.lineTo(-2, 9); ctx.stroke();
@@ -2147,7 +2446,8 @@
       } else if (u.tankKey === 'medium') {
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-14, -16, 28, 6); ctx.fillRect(-14, 10, 28, 6);
         ctx.fillStyle = '#1e293b';
-        for (let i = -12; i < 14; i += 4) { ctx.fillRect(i, -16, 1.5, 6); ctx.fillRect(i, 10, 1.5, 6); }
+        { const to = (u.treadOffset || 0) % 4;
+          for (let i = -14 + to; i < 14; i += 4) { ctx.fillRect(i, -16, 1.5, 6); ctx.fillRect(i, 10, 1.5, 6); } }
         ctx.fillStyle = bodyC; ctx.fillRect(-12, -10, 24, 20);
         ctx.strokeStyle = wearC; ctx.lineWidth = 0.8;
         ctx.beginPath(); ctx.moveTo(-2, -10); ctx.lineTo(-2, 10); ctx.stroke();
@@ -2161,7 +2461,8 @@
       } else if (u.tankKey === 'mbt') {
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-16, -18, 32, 7); ctx.fillRect(-16, 11, 32, 7);
         ctx.fillStyle = '#1e293b';
-        for (let i = -14; i < 16; i += 4) { ctx.fillRect(i, -18, 1.5, 7); ctx.fillRect(i, 11, 1.5, 7); }
+        { const to = (u.treadOffset || 0) % 4;
+          for (let i = -16 + to; i < 16; i += 4) { ctx.fillRect(i, -18, 1.5, 7); ctx.fillRect(i, 11, 1.5, 7); } }
         ctx.fillStyle = bodyC; ctx.fillRect(-14, -11, 28, 22);
         ctx.fillStyle = accC; ctx.fillRect(-14, -13, 28, 2); ctx.fillRect(-14, 11, 28, 2);
         ctx.strokeStyle = wearC; ctx.lineWidth = 0.9;
@@ -2178,7 +2479,8 @@
         // sleek angular hull with electric accents
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-13, -15, 26, 5); ctx.fillRect(-13, 10, 26, 5);
         ctx.fillStyle = '#1e293b';
-        for (let i = -11; i < 13; i += 3.5) { ctx.fillRect(i, -15, 1.3, 5); ctx.fillRect(i, 10, 1.3, 5); }
+        { const to = (u.treadOffset || 0) % 3.5;
+          for (let i = -13 + to; i < 13; i += 3.5) { ctx.fillRect(i, -15, 1.3, 5); ctx.fillRect(i, 10, 1.3, 5); } }
         ctx.fillStyle = bodyC; ctx.fillRect(-12, -10, 24, 20);
         // angled front "wedge" cuts (visual)
         ctx.fillStyle = wearC;
@@ -2193,7 +2495,8 @@
       } else { // ifv
         ctx.fillStyle = '#0f172a'; ctx.fillRect(-14, -15, 28, 5); ctx.fillRect(-14, 10, 28, 5);
         ctx.fillStyle = '#1e293b';
-        for (let i = -12; i < 14; i += 3.5) { ctx.fillRect(i, -15, 1.4, 5); ctx.fillRect(i, 10, 1.4, 5); }
+        { const to = (u.treadOffset || 0) % 3.5;
+          for (let i = -14 + to; i < 14; i += 3.5) { ctx.fillRect(i, -15, 1.4, 5); ctx.fillRect(i, 10, 1.4, 5); } }
         ctx.fillStyle = bodyC; ctx.fillRect(-13, -10, 26, 20);
         ctx.strokeStyle = wearC; ctx.lineWidth = 0.9;
         for (const sx of [-6, 0, 6]) { ctx.beginPath(); ctx.moveTo(sx, -10); ctx.lineTo(sx, 10); ctx.stroke(); }
@@ -2207,6 +2510,7 @@
       ctx.restore();
 
       ctx.save(); ctx.translate(u.x, u.y); ctx.rotate(u.turretAngle);
+      if (u.recoil) ctx.translate(-u.recoil * 4, 0);   // whole turret kicks back on fire
       if (u.tankKey === 'light') {
         ctx.fillStyle = turC; ctx.fillRect(0, -2, 16, 4);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.2; ctx.strokeRect(0, -2, 16, 4);
@@ -2257,7 +2561,31 @@
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(-2, -6.5, 6, 2.5);
         for (let i = 0; i < 3; i++) { ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.arc(-1 + i*2, -5.2, 0.6, 0, Math.PI*2); ctx.fill(); }
       }
+      // HE Shells build — orange warning bands near the muzzle
+      if (u.isPlayer && u.upgrades && u.upgrades.explosive) {
+        const L = BARREL_TIP[u.tankKey] || 20;
+        ctx.fillStyle = '#fb923c';
+        ctx.fillRect(L - 6, -2.6, 2.2, 5.2);
+        ctx.fillRect(L - 10, -2.6, 1.5, 5.2);
+      }
+      // muzzle flash — short-lived star at the barrel tip, tinted per weapon
+      if (u.muzzleFlash > 0) {
+        const L = BARREL_TIP[u.tankKey] || 20;
+        const t = u.muzzleFlash / 0.07;
+        let sz = (u.tankKey === 'mbt' ? 10 : 8) * (0.5 + 0.5 * t);
+        if (u.isPlayer && u.upgrades && u.upgrades.explosive) sz *= 1 + 0.25 * u.upgrades.explosive;
+        const tint = MUZZLE_TINT[u.muzzleWeapon] || ['#fdba74', '#fff7ed'];
+        ctx.globalAlpha = 0.9 * t;
+        ctx.fillStyle = tint[0];
+        ctx.beginPath(); ctx.moveTo(L, -sz * 0.45); ctx.lineTo(L + sz * 1.6, 0); ctx.lineTo(L, sz * 0.45); ctx.closePath(); ctx.fill();
+        ctx.fillRect(L - 1, -sz * 0.8, 2, sz * 1.6);
+        ctx.fillStyle = tint[1];
+        ctx.beginPath(); ctx.moveTo(L, -sz * 0.2); ctx.lineTo(L + sz * 0.9, 0); ctx.lineTo(L, sz * 0.2); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       ctx.restore();
+
+      if (u.isPlayer && u.upgrades) renderPlayerUpgradeFx(u, def);
 
       if (invuln) { ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 6, 0, Math.PI*2); ctx.stroke(); }
       if (stunned) {
@@ -2356,12 +2684,20 @@
         return;
       }
 
+      // Elite — pulsing gold ring under everything else
+      if (u.elite) {
+        const pr = def.radius + 9 + Math.sin(performance.now() / 150) * 2;
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.9)'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(u.x, u.y, pr, 0, Math.PI*2); ctx.stroke();
+      }
+
       // visibility ring — always-on coloured halo so they pop against any biome
       const ringColor = u.enemyKind === 'mega' ? 'rgba(244, 114, 182, 0.5)' :
                         u.enemyKind === 'super' ? 'rgba(167, 139, 250, 0.5)' :
                         u.enemyKind === 'humvee' ? 'rgba(251, 146, 60, 0.45)' :
                         u.enemyKind === 'rpg' ? 'rgba(234, 88, 12, 0.5)' :
                         u.enemyKind === 'rusher' ? 'rgba(239, 68, 68, 0.55)' :
+                        u.enemyKind === 'sniper' ? 'rgba(56, 189, 248, 0.55)' :
                         'rgba(226, 232, 240, 0.5)'; // soldier
       ctx.fillStyle = ringColor;
       ctx.beginPath(); ctx.arc(u.x, u.y, def.radius + 5, 0, Math.PI*2); ctx.fill();
@@ -2372,9 +2708,23 @@
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.ellipse(u.x + 3, u.y + 4, def.radius * 1.15, def.radius * 0.5, 0, 0, Math.PI*2); ctx.fill();
 
+      // sniper laser-sight telegraph — brightens as the shot gets closer (world coords,
+      // so it must be drawn BEFORE the translate/rotate below)
+      if (u.enemyKind === 'sniper' && u.aimTimer > 0) {
+        const p = getPlayer();
+        if (p && p.alive) {
+          const a = 0.25 + 0.6 * (1 - u.aimTimer / 0.9);
+          ctx.strokeStyle = `rgba(239, 68, 68, ${a})`;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([7, 5]);
+          ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+
       ctx.save(); ctx.translate(u.x, u.y); ctx.rotate(ang);
 
-      if (u.enemyKind === 'soldier' || u.enemyKind === 'rusher') {
+      if (u.enemyKind === 'soldier' || u.enemyKind === 'rusher' || u.enemyKind === 'sniper') {
         // infantry figure — larger and more readable
         const bodyC = flash ? '#fef3c7' : def.color;
         const accC = def.accent;
@@ -2393,9 +2743,10 @@
         ctx.fillRect(3, 2, 7, 3);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 0.7;
         ctx.strokeRect(3, -5, 7, 3); ctx.strokeRect(3, 2, 7, 3);
-        // weapon (rifle barrel poking forward)
+        // weapon (rifle barrel poking forward — snipers get a long barrel + scope)
         ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(9, -4.5, 5, 2);
+        ctx.fillRect(9, -4.5, u.enemyKind === 'sniper' ? 12 : 5, 2);
+        if (u.enemyKind === 'sniper') { ctx.fillStyle = '#38bdf8'; ctx.fillRect(11, -6.5, 3, 1.5); }
         // head (skin tone)
         ctx.fillStyle = '#d4a373';
         ctx.beginPath(); ctx.arc(3, 0, 3.5, 0, Math.PI*2); ctx.fill();
@@ -2508,14 +2859,22 @@
       // Turret for ranged enemies (drawn separately for super/mega using turretAngle)
       if (u.enemyKind === 'super') {
         ctx.save(); ctx.translate(u.x, u.y); ctx.rotate(u.turretAngle);
+        if (u.recoil) ctx.translate(-u.recoil * 3, 0);
         ctx.fillStyle = flash ? '#fef3c7' : def.color;
         ctx.fillRect(0, -3, 22, 6);
         ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.strokeRect(0, -3, 22, 6);
         ctx.fillRect(20, -4, 4, 8);
         ctx.strokeRect(20, -4, 4, 8);
+        if (u.muzzleFlash > 0) {
+          const t = u.muzzleFlash / 0.07, sz = 9 * (0.5 + 0.5 * t);
+          ctx.globalAlpha = 0.9 * t; ctx.fillStyle = '#fdba74';
+          ctx.beginPath(); ctx.moveTo(24, -sz * 0.45); ctx.lineTo(24 + sz * 1.6, 0); ctx.lineTo(24, sz * 0.45); ctx.closePath(); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.restore();
       } else if (u.enemyKind === 'mega') {
         ctx.save(); ctx.translate(u.x, u.y); ctx.rotate(u.turretAngle);
+        if (u.recoil) ctx.translate(-u.recoil * 3, 0);
         ctx.fillStyle = flash ? '#fef3c7' : def.color;
         // 3 barrels in a row
         ctx.fillRect(0, -8, 26, 4);
@@ -2525,6 +2884,14 @@
         ctx.strokeRect(0, -8, 26, 4); ctx.strokeRect(0, -2, 28, 4); ctx.strokeRect(0, 4, 26, 4);
         ctx.fillStyle = '#0a0a0a';
         ctx.fillRect(24, -7, 2, 2); ctx.fillRect(26, -1, 2, 2); ctx.fillRect(24, 5, 2, 2);
+        if (u.muzzleFlash > 0) {
+          const t = u.muzzleFlash / 0.07, sz = 8 * (0.5 + 0.5 * t);
+          ctx.globalAlpha = 0.9 * t; ctx.fillStyle = '#f9a8d4';
+          for (const oy of [-6, 0, 6]) {
+            ctx.beginPath(); ctx.moveTo(27, oy - sz * 0.35); ctx.lineTo(27 + sz * 1.3, oy); ctx.lineTo(27, oy + sz * 0.35); ctx.closePath(); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
         ctx.restore();
       } else if (u.enemyKind === 'humvee') {
         // humvee MG on roof rotates with turret
@@ -2598,11 +2965,24 @@
       }
       for (const b of state.bullets) {
         if (b.weapon === 'cannon' || b.weapon === 'heavy_cannon' || b.weapon === 'mega_volley') {
-          ctx.fillStyle = b.weapon === 'heavy_cannon' ? '#c4b5fd' :
-                          b.weapon === 'mega_volley' ? '#f9a8d4' :
-                          b.ownerTeam === 'red' ? '#fdba74' : '#67e8f9';
-          ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
-          ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+          // proper tank shell — tracer glow, casing, dark penetrator tip
+          const tint = b.weapon === 'heavy_cannon' ? '#c4b5fd' :
+                       b.weapon === 'mega_volley' ? '#f9a8d4' :
+                       b.ownerTeam === 'red' ? '#fdba74' : '#67e8f9';
+          ctx.save();
+          ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+          ctx.globalAlpha = 0.45;
+          ctx.fillStyle = tint;
+          ctx.fillRect(-14, -1.6, 11, 3.2);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = tint;
+          ctx.fillRect(-4, -2.2, 7, 4.4);
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(-4, -2.2, 7, 4.4);
+          ctx.fillStyle = '#1f2937';
+          ctx.beginPath(); ctx.moveTo(3, -2.2); ctx.lineTo(7.5, 0); ctx.lineTo(3, 2.2); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#fff7ed';
+          ctx.beginPath(); ctx.arc(-4, 0, 1.4, 0, Math.PI*2); ctx.fill();
+          ctx.restore();
         } else if (b.weapon === 'rocket' || b.weapon === 'rpg') {
           ctx.save();
           const ang = Math.atan2(b.vy, b.vx);
@@ -2643,36 +3023,51 @@
           ctx.fillStyle = b.ownerTeam === 'red' ? '#fb923c' : '#22d3ee';
           ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8; ctx.stroke();
-        } else if (b.weapon === 'humvee_mg' || b.weapon === 'pistol' || b.weapon === 'smg' || b.weapon === 'heavy_mg') {
+        } else if (b.weapon === 'humvee_mg' || b.weapon === 'pistol' || b.weapon === 'smg' || b.weapon === 'heavy_mg' || b.weapon === 'sniper') {
           // visible chunky tracer + bright outline so they read against any biome
           const v = Math.atan2(b.vy, b.vx);
-          const tracerLen = b.weapon === 'pistol' ? 9 : (b.weapon === 'heavy_mg' ? 16 : 12);
+          const tracerLen = b.weapon === 'pistol' ? 9 :
+                            b.weapon === 'heavy_mg' ? 16 :
+                            b.weapon === 'sniper' ? 24 : 12;
           const ballR = b.weapon === 'pistol' ? 3 :
                         b.weapon === 'smg' ? 2.8 :
+                        b.weapon === 'sniper' ? 3 :
                         b.weapon === 'heavy_mg' ? 4.2 : 3.5;
-          ctx.strokeStyle = b.weapon === 'heavy_mg' ? '#dc2626' : '#fb923c';
-          ctx.lineWidth = b.weapon === 'heavy_mg' ? 5 : 4;
+          ctx.strokeStyle = b.weapon === 'heavy_mg' ? '#dc2626' :
+                            b.weapon === 'sniper' ? '#e0f2fe' : '#fb923c';
+          ctx.lineWidth = b.weapon === 'heavy_mg' ? 5 : (b.weapon === 'sniper' ? 3 : 4);
           ctx.beginPath();
           ctx.moveTo(b.x - Math.cos(v)*tracerLen, b.y - Math.sin(v)*tracerLen);
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
-          ctx.fillStyle = b.weapon === 'heavy_mg' ? '#fde047' : '#fbbf24';
+          ctx.fillStyle = b.weapon === 'heavy_mg' ? '#fde047' :
+                          b.weapon === 'sniper' ? '#ffffff' : '#fbbf24';
           ctx.beginPath(); ctx.arc(b.x, b.y, ballR, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
         } else if (b.weapon === 'laser') {
-          // glowing cyan beam projectile
+          // glowing beam bolt — grows into fat violet PLASMA as damage stacks pile up
           ctx.save();
           const v = Math.atan2(b.vy, b.vx);
           ctx.translate(b.x, b.y); ctx.rotate(v);
+          let pw = 1, plasma = false;
+          if (b.owner && b.owner.isPlayer && b.owner.upgrades) {
+            const dm = b.owner.upgrades.damageMult || 1;
+            pw = Math.min(2, 1 + (dm - 1) * 0.6);
+            plasma = dm >= 1.44;   // 2+ Heavier Rounds stacks
+          }
+          if (plasma) {
+            ctx.fillStyle = 'rgba(167, 139, 250, 0.4)';
+            ctx.fillRect(-16, -5.5 * pw, 32, 11 * pw);
+          }
           // outer glow
           ctx.fillStyle = 'rgba(6, 182, 212, 0.45)';
-          ctx.fillRect(-14, -4, 28, 8);
+          ctx.fillRect(-14, -4 * pw, 28, 8 * pw);
           // mid
-          ctx.fillStyle = '#06b6d4';
-          ctx.fillRect(-12, -2.5, 24, 5);
+          ctx.fillStyle = plasma ? '#a78bfa' : '#06b6d4';
+          ctx.fillRect(-12, -2.5 * pw, 24, 5 * pw);
           // inner bright
-          ctx.fillStyle = '#67e8f9';
-          ctx.fillRect(-10, -1.5, 20, 3);
+          ctx.fillStyle = plasma ? '#c4b5fd' : '#67e8f9';
+          ctx.fillRect(-10, -1.5 * pw, 20, 3 * pw);
           // hot core
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(-8, -0.6, 16, 1.2);
@@ -2708,6 +3103,30 @@
           ctx.strokeStyle = b.ownerTeam === 'red' ? '#fbbf24' : '#67e8f9'; ctx.lineWidth = 2.5;
           const v = Math.atan2(b.vy, b.vx);
           ctx.beginPath(); ctx.moveTo(b.x - Math.cos(v)*10, b.y - Math.sin(v)*10); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+        // build-themed overlays on the player's rounds
+        if (b.owner && b.owner.isPlayer && b.owner.upgrades && b.weapon !== 'rocket') {
+          const up = b.owner.upgrades;
+          if (up.burnDps) {   // fire — warm halo (embers spawn in updateBullets)
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = '#f97316';
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.radius + 3.5, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          if (up.explosive && (b.weapon === 'cannon' || b.weapon === 'autocannon' || b.weapon === 'laser')) {
+            ctx.globalAlpha = 0.28;
+            ctx.fillStyle = '#fb923c';
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.radius + 5, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          if (up.chainCount) {  // electric — crackle zigzag riding the round
+            ctx.strokeStyle = 'rgba(103, 232, 249, 0.75)'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(b.x - 5, b.y + rand(-3, 3));
+            ctx.lineTo(b.x + rand(-2, 2), b.y + rand(-3, 3));
+            ctx.lineTo(b.x + 5, b.y + rand(-3, 3));
+            ctx.stroke();
+          }
         }
       }
       // XP gems (under units)
@@ -2746,10 +3165,10 @@
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      // Stun shockwaves
+      // Stun / HE shockwaves
       for (const s of state.shockwaves) {
         ctx.globalAlpha = clamp(s.life / s.maxLife, 0, 0.7);
-        ctx.strokeStyle = '#fde047'; ctx.lineWidth = 3;
+        ctx.strokeStyle = s.color || '#fde047'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.stroke();
         ctx.globalAlpha = 1;
       }
@@ -2761,10 +3180,71 @@
         ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI*2); ctx.fill();
       }
       ctx.globalAlpha = 1;
+      // Floating damage numbers — on top of everything in world space
+      ctx.textAlign = 'center';
+      for (const f of state.floaters) {
+        ctx.globalAlpha = clamp(f.life / f.maxLife, 0, 1);
+        ctx.font = `bold ${f.size}px 'Segoe UI', Tahoma, sans-serif`;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 3;
+        ctx.strokeText(f.text, f.x, f.y);
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, f.x, f.y);
+      }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
       ctx.restore();
+
+      // Low-HP warning vignette (screen space)
+      const vp = getPlayer();
+      if (vp && vp.alive && vp.maxHp > 0) {
+        const frac = vp.hp / vp.maxHp;
+        if (frac < 0.35) {
+          const a = 0.45 * (1 - frac / 0.35);
+          const g = ctx.createRadialGradient(VIEW_W/2, VIEW_H/2, VIEW_H * 0.35, VIEW_W/2, VIEW_H/2, VIEW_H * 0.75);
+          g.addColorStop(0, 'rgba(220, 38, 38, 0)');
+          g.addColorStop(1, `rgba(220, 38, 38, ${a})`);
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+        }
+      }
 
       // Off-screen threat indicators — red arrows on screen edge for hostile units outside the camera
       renderThreatIndicators();
+      renderMinimap();
+    }
+
+    // Minimap — bottom-right corner: walls, hostiles, elites gold, bosses big red, player white
+    function renderMinimap() {
+      const p = getPlayer();
+      if (!p || !state.map) return;
+      const m = state.map;
+      const mw = 150, mh = Math.round(mw * m.height / m.width);
+      const mx = VIEW_W - mw - 12, my = VIEW_H - mh - 12;
+      const sx = mw / m.width, sy = mh / m.height;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+      ctx.fillRect(mx, my, mw, mh);
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+      for (const w of m.walls) {
+        ctx.fillRect(mx + w.x * sx, my + w.y * sy, Math.max(1.5, w.w * sx), Math.max(1.5, w.h * sy));
+      }
+      for (const u of state.units) {
+        if (!u.alive || u.isPlayer) continue;
+        if (u.team === p.team) {
+          ctx.fillStyle = '#06b6d4';
+          ctx.fillRect(mx + u.x * sx - 1.5, my + u.y * sy - 1.5, 3, 3);
+          continue;
+        }
+        const boss = u.category === 'enemy' && ENEMIES[u.enemyKind].isBoss;
+        ctx.fillStyle = boss ? '#dc2626' : (u.elite ? '#fde047' : '#ef4444');
+        const s = boss ? 5 : 2.5;
+        ctx.fillRect(mx + u.x * sx - s/2, my + u.y * sy - s/2, s, s);
+      }
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(mx + p.x * sx - 2, my + p.y * sy - 2, 4, 4);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 1;
+      ctx.strokeRect(mx + state.camera.x * sx, my + state.camera.y * sy, VIEW_W * sx, VIEW_H * sy);
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.8)';
+      ctx.strokeRect(mx, my, mw, mh);
     }
 
     function renderThreatIndicators() {
@@ -2787,12 +3267,14 @@
         // color by enemy type
         let color = '#ef4444';
         if (u.category === 'enemy') {
-          if (u.enemyKind === 'yesking') color = '#ef4444';
+          if (u.elite) color = '#fde047';
+          else if (u.enemyKind === 'yesking') color = '#ef4444';
           else if (u.enemyKind === 'super') color = '#a78bfa';
           else if (u.enemyKind === 'mega') color = '#f472b6';
           else if (u.enemyKind === 'humvee') color = '#fb923c';
           else if (u.enemyKind === 'monkey') color = '#a16207';
           else if (u.enemyKind === 'rpg') color = '#dc2626';
+          else if (u.enemyKind === 'sniper') color = '#38bdf8';
         } else color = '#06b6d4';
         ctx.save();
         ctx.translate(ix, iy);
@@ -2872,7 +3354,8 @@
       state.decorations = generateDecorations(state.selectedMap);
       buildFlowGrid();
       state.units = []; state.bullets = []; state.particles = []; state.smokes = []; state.flags = [];
-      state.gems = []; state.lightnings = []; state.shockwaves = [];
+      state.gems = []; state.lightnings = []; state.shockwaves = []; state.floaters = [];
+      state.stats = { kills: 0, dmg: 0 }; state.rerollLeft = 0;
       state.score = 0; state.scores = { red: 0, blue: 0 };
       state.matchTime = state.mode.isOnslaught ? 0 : state.mode.timeLimit;
       state.shake = 0;
@@ -2937,6 +3420,22 @@
       else if (state.mode.key === 'tdm') detail = `Red ${state.scores.red} · Blue ${state.scores.blue}`;
       else if (state.mode.key === 'ctf') detail = `Red captures ${state.scores.red} · Blue captures ${state.scores.blue}`;
       document.getElementById('game-over-detail').textContent = detail;
+      // Run recap — kills, damage, DPS + the build you were running
+      const statsEl = document.getElementById('run-stats');
+      if (state.mode.key === 'onslaught') {
+        const secs = Math.max(state.matchTime, 1);
+        const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n));
+        let html = `Kills ${state.stats.kills} · Damage ${fmt(state.stats.dmg)} · DPS ${fmt(state.stats.dmg / secs)}`;
+        const build = Object.entries(state.upgradeMaxes)
+          .filter(([k, n]) => n > 0 && UPGRADES[k])
+          .map(([k, n]) => `<span class="icon-chip" title="${UPGRADES[k].name}">${UPGRADES[k].icon}×${n}</span>`)
+          .join('');
+        if (build) html += `<br>${build}`;
+        statsEl.innerHTML = html;
+        statsEl.style.display = '';
+      } else {
+        statsEl.style.display = 'none';
+      }
       document.getElementById('game-over').classList.remove('hidden');
       document.getElementById('respawn-banner').classList.add('hidden');
       document.getElementById('wave-banner').classList.add('hidden');
@@ -3091,6 +3590,7 @@
         updateMatchTime(dt);
         updateCamera(dt);
         updateParticles(dt);   // particles only animate while playing (so pause freezes everything)
+        updateFloaters(dt);
       }
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);

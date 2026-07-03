@@ -51,20 +51,27 @@ Vampire-Survivors / Disfigure style:
 | ifv | Spearhead | 105 | 136 | autocannon 0.18s | rocket (homing+stun) 4.5s | Overdrive (fire×2 3s), 14s |
 | laser | Phoenix | 130 | 130 | laser 0.45s (pierces 3) | MG | Overload (fire×2 3s), 14s |
 
-**Onslaught enemies** (`ENEMIES`): soldier (30hp, pistol), rusher (25hp, fast, smg single-shot), monkey (80hp, throws watermelons, sprite `monkey.png`, 5 random screeches), rpg (40hp, slow homing missile that fizzles if you kill the trooper), humvee (120hp, MG burst), super (350hp, purple, heavy cannon), mega (900hp, pink, 3-shot volley), **yesking** mini-boss (1800hp base, scales +12%/min past 5:00 → ~3960 at 15:00, spinning `yesking.webp` sprite, radial 4/5/6/8 orb patterns, every 5:00), **finalboss** "YESKING ASCENDED" (14000hp flat, 80px, triple bullet-hell pattern, at 30:00).
+**Onslaught enemies** (`ENEMIES`): soldier (30hp, pistol), rusher (25hp, fast, smg single-shot), monkey (80hp, throws watermelons, sprite `monkey.png`, 5 random screeches), rpg (40hp, slow homing missile that fizzles if you kill the trooper), **sniper** "Marksman" (35hp, from 5:00, stands still 0.9s with a red dashed laser-sight line to the player, then a fast 520px/s tracer, 22dmg, range 450), humvee (120hp, MG burst), super (350hp, purple, heavy cannon), mega (900hp, pink, 3-shot volley), **yesking** mini-boss (1800hp base, scales +12%/min past 5:00 → ~3960 at 15:00, spinning `yesking.webp` sprite, radial 4/5/6/8 orb patterns, every 5:00; **past 10:00 adds one aimed orb per volley**), **finalboss** "YESKING ASCENDED" (14000hp flat, 80px, triple bullet-hell pattern, at 30:00).
+
+**Elites**: past 8:00 any non-boss spawn has a growing chance (4% → cap 22%) to roll elite — 3× HP, 3× bounty (= 3× XP, via `enemy.bounty` which `onEnemyKilled` now uses instead of `def.bounty`), 1.12× speed, pulsing gold ring, gold threat arrow + gold minimap dot.
 
 **Modes** (`MODES`): onslaught (continuous XP survival — flagship), tdm (5v5 bots to 50 kills), ctf (3v3 bots, 3 captures).
 
-**Upgrades** (`UPGRADES`, 13): damage, reload, hp, speed, ability-CD, regen, thorns, pierce, secondary-rate, **burn** (fire DoT), **chain** (lightning arc), **ricochet** (wall bounce), **stun** (periodic pulse).
+**Upgrades** (`UPGRADES`, 17): damage, reload, hp, speed, ability-CD, regen, **thorns** (reworked: shooters take 15 reflect dmg when their rounds hit you — was dead code after melee removal), pierce, secondary-rate, **burn** (fire DoT), **chain** (lightning arc), **ricochet** (wall bounce), **stun** (periodic pulse), **crit** "Sabot Core" (+10%/stack, 2× dmg, gold floater), **vampire** "Nano Salvage" (heal 3%/stack of damage dealt), **explosive** "HE Shells" (cannon/autocannon/laser hits splash 25%/stack in 80px, orange shockwave), **magnet** "Magnet Coil" (+80 gem radius/stack). One **Reroll** per level-up screen (`#reroll-btn`, `state.rerollLeft`).
 
-**Audio files** (repo root): `meow.mp3` (ability, pitched per class), `cannon/ifv_cannon/ifv_rocket/laser/heavy_mg/mg.mp3` (weapons), `allahu/death_npc1/death_npc2/death_female.mp3` (soldier death pool, random), `monkey1-5.mp3` (monkey, random), `level_up.mp3`, `yesking.mp3` (boss entrance), `music/desert1-3.mp3` (desert bg). **Images**: `yesking.webp`, `monkey.png`.
+**HUD/feel**: floating damage numbers (`state.floaters`, capped at 70; white=hit, gold big=crit, cyan=chain, orange=HE splash), **minimap** bottom-right (walls, red hostiles, gold elites, big red bosses, white player, camera rect), low-HP red vignette under 35% HP, game-over **run recap** (kills / damage / DPS + build icon chips in `#run-stats`).
+
+**Audio files** (repo root): `meow.mp3` (ability, pitched per class), `cannon/ifv_cannon/ifv_rocket/laser/heavy_mg/mg.mp3` (weapons), `allahu/death_npc1/death_npc2/death_female.mp3` (soldier death pool, random), `monkey1-5.mp3` (monkey — **death only**, throws use a quiet synth `playFwip()`; user found screech-per-throw annoying), `level_up.mp3`, `yesking.mp3` (boss entrance), `music/desert1-3.mp3` (desert bg). **Images**: `yesking.webp`, `monkey.png`.
+
+**Firing/movement FX**: every shot sets `unit.recoil`/`muzzleFlash`/`muzzleWeapon` in `fireWeapon` (decayed in `updateUnits`); turrets kick back and draw a per-weapon-tinted flash star at `BARREL_TIP[class]` (super/mega enemies too). Cannon-family projectiles render as rotated shells (tracer glow + casing + dark tip) with smoke trails; cannon hits/wall impacts push small shockwave rings; kills push colour-coded expanding rings. Tread links scroll with distance travelled (`u.treadOffset`), tanks kick up biome-coloured dust.
+
+**Build-themed player visuals** (`renderPlayerUpgradeFx` + bullet overlays): burn = exhaust flames + ember emitter + fire-haloed rounds; chain = cyan arcs crawling the hull + spark emitter + crackle on bullets; explosive = orange barrel bands + bigger muzzle flash + orange-glow shells; crit = gold trim ring; vampire = pulsing crimson core; laser bolts scale width with `damageMult` and go violet **plasma** at 2+ damage stacks. Particle EMISSION happens in update functions (pause-safe); render only draws.
 
 ## Known issues / TODO (not yet fixed)
 
-1. **`hasLineOfSight` samples every ~20px**, so a sightline that clips a wall *corner* between samples counts as clear. Harmless (the resulting shot fizzles on the wall), but it's why enemies occasionally fire from just around a corner.
-2. **`melee_light`/`melee_heavy` in `WEAPON_DAMAGE` are dead entries** — melee was removed; nothing fires them. Safe to delete next pass.
+_(none currently logged)_
 
-_Resolved earlier issues: player cannon/autocannon/mg/rocket are in `WEAPON_DAMAGE` now (was: default-20 fallback); boss HP scaling was rewired from the dead `state.wave` to `state.matchTime` (2026-06-10)._
+_Resolved: `hasLineOfSight` is now an exact segment-vs-rect slab test (`segHitsRect`) — no more corner-clipping between 20px samples (2026-07-03); dead `melee_light`/`melee_heavy` entries deleted (2026-07-03); player cannon/autocannon/mg/rocket are in `WEAPON_DAMAGE` now (was: default-20 fallback); boss HP scaling was rewired from the dead `state.wave` to `state.matchTime` (2026-06-10)._
 
 ## How to do common changes
 
@@ -96,6 +103,20 @@ SFX volume, Music volume (sliders), Skip-track button, Enemy-Death-Pitch (Troll/
 ## Change log (newest first — append after each major change: what changed + lesson)
 
 _Append a tight bullet here whenever you ship something. Keep the "lesson" so future sessions don't repeat mistakes._
+
+### 2026-07-03 (visual identity + firing feel pass)
+- **Monkey audio fix**: screech now plays once on death only; watermelon throws use a new quiet synth `playFwip()` (bandpass noise sweep). User feedback: screech-on-every-throw was constant noise — don't re-attach screeches to the throw.
+- **Firing feel**: barrel recoil + per-weapon muzzle flash (`recoil`/`muzzleFlash`/`muzzleWeapon` set in `fireWeapon`, decayed in the `updateUnits` FX loop; super/mega get it too), cannon rounds are now proper shells with smoke trails, impact/wall/kill shockwave rings.
+- **Movement feel**: tread links scroll with distance (`treadOffset` per class spacing: 3/4/4/3.5/3.5 — keep link loop start at track edge minus offset), biome-coloured dust behind moving tanks.
+- **Build-themed tank visuals**: burn=flames/embers, chain=hull arcs/sparks/bullet crackle, explosive=barrel bands+bigger flash+glow shells, crit=gold ring, vampire=crimson core, laser→violet plasma at 2+ damage stacks. Lesson: **particle emission must live in update functions, not render** — render runs while paused, so emitting there piles up frozen particles.
+
+### 2026-07-03 (content + juice pass)
+- **Marksman sniper enemy** (from 5:00): 0.9s standing telegraph with a red dashed laser-sight line drawn to the player, then a fast white tracer (520 px/s, 22 dmg, range 450 — respects the ≤460 range gotcha). Reuses the soldier render branch with a longer barrel + cyan scope. Lesson: the aim line is drawn in *world* coords, so it must be drawn **before** the `ctx.translate/rotate` in `renderEnemy` or it renders in local space.
+- **Elite variants** past 8:00 (4%→22% chance): 3× HP/bounty, 1.12× speed, gold ring/arrow/minimap dot. Required fixing `onEnemyKilled` to use `enemy.bounty` (per-unit) instead of `def.bounty` (class) for score + gem value.
+- **4 new upgrades** (pool now 17): Sabot Core (crit 10%/stack, 2×), Nano Salvage (3%/stack lifesteal via `playerLifesteal()`), HE Shells (primary-hit splash 25%/stack, 80px, via `explodeHE()` — restricted to cannon/autocannon/laser so MG spam can't proc it), Magnet Coil (+80 gem radius/stack — the old `p.upgrades.magnet` flag in `updateGems` was checked but never grantable; now stacks). **Thorns reworked** — it was dead code since melee removal; now reflects 15/stack onto shooters whose rounds hit the player.
+- **Reroll button** on the level-up screen — 1 per screen (`state.rerollLeft`), `startUpgradePick` split into itself + `renderUpgradeCards()`.
+- **Juice/HUD**: floating damage numbers (white/gold-crit/cyan-chain/orange-HE, capped 70, freeze on pause like particles), minimap bottom-right, low-HP vignette (<35%), death-screen run recap (kills/dmg/DPS via `state.stats` + build icon chips). Veteran YESKING fires one aimed orb per volley past 10:00.
+- **Fixes**: exact segment-vs-AABB LOS (`segHitsRect`, slab method) replaces 20px sampling — kills known issue #1 and is cheaper; deleted dead `melee_light`/`melee_heavy` damage entries (#2).
 
 ### 2026-06-10 (AI pathing + balance pass)
 - **Flow-field pathing for Onslaught enemies.** 40px BFS grid from the player, rebuilt every 0.3s in `updateOnslaught` (~2400 cells, cheap). Enemies (bosses too) follow it whenever they lose LOS, so they route *around* walls instead of grinding into them; with LOS they keep the old distance-band behavior, now with `steerClearOfWalls` whisker steering so retreat/strafe doesn't wall-hump. TDM/CTF bots got whisker steering too. Lessons: (a) initialize `FLOW.dist` to **-1**, not 0 — a zero-filled grid reads as "everywhere is the player's cell"; (b) when sampling 8 neighbors for descent direction, reject diagonals whose two orthogonal cells are blocked or units cut corners through walls; (c) the player hugging a wall sits inside the 16px inflated padding — hop the BFS seed to the nearest open cell.
