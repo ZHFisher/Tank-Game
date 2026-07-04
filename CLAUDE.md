@@ -40,7 +40,9 @@ Vampire-Survivors / Disfigure style:
 
 ## Current contents (save-file inventory — what exists right now)
 
-**Controls**: WASD move · Mouse aim · LMB primary · RMB secondary · Q ability · P/Esc pause.
+**Controls**: WASD move · Mouse aim · LMB primary · RMB secondary · Q ability · **V camera toggle** · P/Esc pause. First person: WASD is view-relative (A/D strafe), mouse-look via pointer lock (click canvas to grab; Esc releases lock first, so pausing from locked FP takes Esc-Esc or P), arrow keys turn as a no-lock fallback.
+
+**Camera modes** (`viewMode`: `'top' | 'fp'`, persisted as `tb-view`): pause-menu Camera buttons + V hotkey. First person is a **Wolfenstein-style raycaster over the unchanged 2D sim** — only the renderer swaps (`render()` early-returns into `renderFirstPerson()`). Pieces: `FP` (fov 1.15, per-column z-buffer), `rayHitRect` (slab ray-vs-AABB), `state.fpWalls` (map walls + 4 render-only border walls, built in `buildMatch`), biome `sky`/`skyHorizon` gradients on every map, fog-shaded 2px wall columns, distance-sorted billboards (`drawSpriteFP`: images for boss/monkey, procedural infantry/vehicle/tank silhouettes, bullets as glow orbs, gems/flags/smokes), class viewmodel with recoil/muzzle-flash/build themes (`drawViewmodelFP`), crosshair, threat arrows as relative bearings (ahead=up, in-cone skipped), minimap + vignette kept. Not drawn in FP: decorations, particles, damage floaters. Sprite occlusion is a centre-column z-test (slight edge popping — acceptable).
 
 **Tank classes** (`TANKS`, player HP from `PLAYER_HP`):
 | key | name | HP | speed | primary | secondary | ability (CD) |
@@ -103,6 +105,12 @@ SFX volume, Music volume (sliders), Skip-track button, Enemy-Death-Pitch (Troll/
 ## Change log (newest first — append after each major change: what changed + lesson)
 
 _Append a tight bullet here whenever you ship something. Keep the "lesson" so future sessions don't repeat mistakes._
+
+### 2026-07-04 (first-person mode)
+- **First-person camera** via pause-menu Camera buttons + V hotkey, persisted (`tb-view`). Raycaster over the untouched 2D sim: slab ray-vs-AABB per 2px column against `state.fpWalls` (map walls + border walls so rays always terminate), fisheye-corrected, fog toward each map's new `skyHorizon` colour; per-biome sky/floor gradients (desert dusk, pale snow, jungle haze, forest, overcast Fulda).
+- **Billboard sprites** sorted far→near with a per-column z-buffer (centre-column occlusion test): boss/monkey use their images, infantry/vehicles/bot tanks are procedural front-facing silhouettes in their palette, bullets are glow orbs (boss orbs red, watermelon green, laser cyan), gems/flags/smokes included; elites keep gold rings, snipers show a red aim glow, HP bars float above sprites.
+- **Viewmodel**: class-specific barrel(s) from the bottom edge (MBT muzzle brake, IFV twin cannons, laser emitter that goes violet plasma at 2+ damage stacks) with recoil kick, 8-point muzzle-flash star, and build themes (flames, arcs, HE bands, gold trim). Crosshair expands with recoil.
+- **FP controls**: WASD view-relative + strafe, pointer-lock mouse-look (click to grab), arrow-key turn fallback; threat arrows become relative bearings (ahead = up) and skip the view cone. Lessons: (a) browser Esc exits pointer lock before the page sees it — pausing from locked FP is Esc-Esc or P, don't "fix" this; (b) hide the player's own bullets within 90 units or every shot whites out the screen; (c) sample-verify FP pixels away from the crosshair centre dot — it sits exactly at screen centre and contaminates wall-colour reads.
 
 ### 2026-07-03 (visual identity + firing feel pass)
 - **Monkey audio fix**: screech now plays once on death only; watermelon throws use a new quiet synth `playFwip()` (bandpass noise sweep). User feedback: screech-on-every-throw was constant noise — don't re-attach screeches to the throw.
